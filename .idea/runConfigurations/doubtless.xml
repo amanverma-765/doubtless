@@ -1,0 +1,7 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="doubtless" type="UvRunConfigurationType" factoryName="UvRunConfigurationType">
+    <option name="runType" value="MODULE" />
+    <option name="scriptOrModule" value="doubtless.main" />
+    <method v="2" />
+  </configuration>
+</component>

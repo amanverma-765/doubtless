@@ -4,7 +4,9 @@ version = "1.0.0"
 readme = "README.md"
 description = "An interactive platform providing real-time doubt resolution across live and recorded video lectures."
 requires-python = ">=3.14"
-dependencies = []
+dependencies = [
+    "ncert-cli>=1.0.3",
+]
 
 [dependency-groups]
 dev = ["pytest>=7.0", "ruff>=0.14", "mypy>=1.18"]

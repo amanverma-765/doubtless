@@ -1,11 +1,7 @@
-"""Text normalization applied to book extracted texts"""
+"""Repair the text that comes out of a PDF, one page at a time."""
 
 import re
 from collections import Counter
-
-# PyMuPDF emits real ligature codepoints. NFKC would fix them but also flatten
-# x² to x2, which the maths books cannot afford.
-_LIGATURES = str.maketrans({"ﬀ": "ff", "ﬁ": "fi", "ﬂ": "fl", "ﬃ": "ffi", "ﬄ": "ffl"})
 
 # "I N T R O D U C T I O N": headings set with letter tracking. Four letters
 # minimum so ordinary prose ("I a m") is never a candidate.
@@ -19,18 +15,20 @@ _HYPHEN_BREAK = re.compile(r"(\w)-\n([a-z])")
 # own line ahead of the rest of the word
 _DROP_CAP = re.compile(r"^([A-Z])\n(?=[a-z])", re.MULTILINE)
 
+# NCERT fakes bold by overprinting a line 3-5 times and extraction keeps every
+# copy. Runs of exactly 2 are real (table columns, repeated variables), so only
+# 3+ collapse.
+_OVERPRINT = re.compile(r"^(.+)$(?:\n\1$){2,}", re.MULTILINE)
+
 _PAGE_NUMBER = re.compile(r"^\s*\d{1,4}\s*$")
 
-# How many lines at each end of a page count as furniture. A page number sits
-# at the top or bottom; a lone number in the middle of a page is content --
-# usually a cell of a chemistry table, or a coefficient in a balanced equation.
-# Matching every standalone number cost 1,937 content lines to remove 242 real
-# page numbers, so position is what decides.
+# A page number sits in the top or bottom two lines. A lone number mid-page is
+# content: a table cell or an equation coefficient.
 _PAGE_EDGE = 2
 
 
 def _is_page_number(text: str, position: int, total: int) -> bool:
-    """A standalone number near the top or bottom of its page."""
+    """Report whether a line is a page number rather than content."""
     if not _PAGE_NUMBER.match(text):
         return False
     return position < _PAGE_EDGE or position >= total - _PAGE_EDGE
@@ -38,21 +36,20 @@ def _is_page_number(text: str, position: int, total: int) -> bool:
 
 def clean_text(text: str) -> str:
     """Normalize one page's extracted text."""
-    text = text.translate(_LIGATURES).replace("\xa0", " ")
+    text = text.replace("\xa0", " ")
     text = _HYPHEN_BREAK.sub(r"\1\2", text)
     text = _DROP_CAP.sub(r"\1", text)
     text = _TRACKED.sub(lambda m: m.group().replace(" ", ""), text)
-    # collapse runs of spaces/tabs but keep newlines: section splitting needs them
+    # keep newlines: strip_running_heads matches furniture line by line
     text = re.sub(r"[ \t]+", " ", text)
+    # after the space collapse, so copies that differed only in spacing match
+    text = _OVERPRINT.sub(r"\1", text)
     return re.sub(r"\n{3,}", "\n\n", text).strip()
 
 
 def strip_running_heads(pages: list[str], threshold: float = 0.4) -> list[str]:
-    """Drop the running header/footer lines that repeat across a chapter.
-
-    A short line appearing on 40%+ of pages is furniture (book title, chapter
-    name, page numbers), not content.
-    """
+    """Drop short lines that repeat on 40%+ of a chapter's pages: the book
+    title, chapter name and page numbers."""
     if len(pages) < 3:
         return pages
 

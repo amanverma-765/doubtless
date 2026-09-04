@@ -5,11 +5,18 @@ readme = "README.md"
 description = "An interactive platform providing real-time doubt resolution across live and recorded video lectures."
 requires-python = ">=3.14"
 dependencies = [
+    "chromadb>=1.5.9",
     "ncert-cli>=1.0.3",
+    "numpy>=2.5.2",
+    "pydantic>=2.13.5",
+    "pymupdf>=1.28.2",
+    "sentence-transformers>=5.0",
+    "torch>=2.14.0",
+    "transformers>=5.16.1",
 ]
 
 [dependency-groups]
-dev = ["pytest>=7.0", "ruff>=0.14", "mypy>=1.18"]
+dev = ["ruff>=0.14", "mypy>=1.18"]
 
 [project.scripts]
 doubtless = "doubtless.main:main"
@@ -18,14 +25,8 @@ doubtless = "doubtless.main:main"
 select = ["E", "F", "I", "UP", "B", "SIM"]
 
 [tool.mypy]
-files = ["src", "tests"]
+files = ["src"]
 strict = true
-
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-# lets `python3 -m pytest` work in a bare checkout, without a synced venv
-pythonpath = ["src"]
-addopts = "-q"
 
 [build-system]
 requires = ["hatchling"]

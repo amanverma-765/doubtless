@@ -4,27 +4,119 @@ import subprocess
 import sys
 from pathlib import Path
 
+from doubtless.rag.model import Book
+
 BOOKS_DIR = Path(__file__).resolve().parents[3] / "data" / "books"
 
-# English PCMB, classes 10-12. Class 10 has no split physics/chemistry/biology:
-# one 'Science' book (jesc1) covers all three. Codes come from `ncert --list`.
-CODES = (
-    "jemh1",
-    "jesc1",  # class 10
-    "keph1",
-    "keph2",
-    "kech1",
-    "kech2",
-    "kemh1",
-    "kebo1",  # class 11
-    "leph1",
-    "leph2",
-    "lech1",
-    "lech2",
-    "lemh1",
-    "lemh2",
-    "lebo1",  # class 12
+BOOKS = (
+    Book(
+        code="jemh1",
+        grade=10,
+        subject="mathematics",
+        folder="class_10_mathematics",
+        offset=0,
+    ),
+    Book(
+        code="jesc1",
+        grade=10,
+        subject="science",
+        folder="class_10_science",
+        offset=0,
+    ),
+    Book(
+        code="keph1",
+        grade=11,
+        subject="physics",
+        folder="class_11_physics_physics_part_i",
+        offset=0,
+    ),
+    Book(
+        code="keph2",
+        grade=11,
+        subject="physics",
+        folder="class_11_physics_physics_part_ii",
+        offset=7,
+    ),
+    Book(
+        code="kech1",
+        grade=11,
+        subject="chemistry",
+        folder="class_11_chemistry_chemistry_part_i",
+        offset=0,
+    ),
+    Book(
+        code="kech2",
+        grade=11,
+        subject="chemistry",
+        folder="class_11_chemistry_chemistry_part_ii",
+        offset=6,
+    ),
+    Book(
+        code="kemh1",
+        grade=11,
+        subject="mathematics",
+        folder="class_11_mathematics",
+        offset=0,
+    ),
+    Book(
+        code="kebo1",
+        grade=11,
+        subject="biology",
+        folder="class_11_biology",
+        offset=0,
+    ),
+    Book(
+        code="leph1",
+        grade=12,
+        subject="physics",
+        folder="class_12_physics_physics_part_i",
+        offset=0,
+    ),
+    Book(
+        code="leph2",
+        grade=12,
+        subject="physics",
+        folder="class_12_physics_physics_part_ii",
+        offset=8,
+    ),
+    Book(
+        code="lech1",
+        grade=12,
+        subject="chemistry",
+        folder="class_12_chemistry_chemistry_i",
+        offset=0,
+    ),
+    Book(
+        code="lech2",
+        grade=12,
+        subject="chemistry",
+        folder="class_12_chemistry_chemistry_ii",
+        offset=5,
+    ),
+    Book(
+        code="lemh1",
+        grade=12,
+        subject="mathematics",
+        folder="class_12_mathematics_mathematics_part_i",
+        offset=0,
+    ),
+    Book(
+        code="lemh2",
+        grade=12,
+        subject="mathematics",
+        folder="class_12_mathematics_mathematics_part_ii",
+        offset=6,
+    ),
+    Book(
+        code="lebo1",
+        grade=12,
+        subject="biology",
+        folder="class_12_biology",
+        offset=0,
+    ),
 )
+
+BY_FOLDER = {book.folder: book for book in BOOKS}
 
 
 def download_books(outdir: Path = BOOKS_DIR) -> list[Path]:
@@ -37,7 +129,7 @@ def download_books(outdir: Path = BOOKS_DIR) -> list[Path]:
             sys.executable,
             "-m",
             "ncert_cli",
-            *CODES,
+            *(book.code for book in BOOKS),
             "--chapters",
             "--no-prelims",
             "-o",

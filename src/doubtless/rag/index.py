@@ -22,7 +22,7 @@ MODEL = "Qwen/Qwen3-Embedding-0.6B"
 
 
 @cache
-def _collection() -> Collection:
+def vector_store() -> Collection:
     _INDEX_DIR = Path(__file__).resolve().parents[3] / "data" / "index"
     client = chromadb.PersistentClient(path=_INDEX_DIR / "chroma_db")
     return client.get_or_create_collection(name="ncert")
@@ -115,7 +115,7 @@ def embed(texts: list[str], query: bool = False) -> NDArray[np.float32]:
 def _ingest(chunks: list[Chunk], vectors: NDArray[np.float32]) -> None:
     """Write chunks and their vectors into the store with metadata."""
     assert len(chunks) == len(vectors)
-    _collection().upsert(
+    vector_store().upsert(
         ids=[f"{c.grade}/{c.book}/{c.chapter}/{c.index}" for c in chunks],
         embeddings=vectors,
         documents=[c.text for c in chunks],
@@ -126,7 +126,7 @@ def _ingest(chunks: list[Chunk], vectors: NDArray[np.float32]) -> None:
 def build_index(books_dir: Path = BOOKS_DIR) -> None:
     """Build the vector index one chapter at a time, skipping chapters already
     in the store so an interrupted run resumes where it stopped."""
-    store = _collection()
+    store = vector_store()
     for pdf in sorted(books_dir.rglob("chapter_*.pdf")):
         grade, book, chapter = _book_source(pdf)
         # a chapter is one upsert, so its first chunk present means all of it is

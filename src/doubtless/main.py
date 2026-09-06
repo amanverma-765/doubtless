@@ -1,11 +1,10 @@
+from doubtless.rag.agent import rag_agent
 from doubtless.rag.index import build_index
-from doubtless.rag.retrieve import search
 
 
 def main() -> None:
     build_index()
-    res = search("what is pythjagoral theorem ?")
-    print(res)
+    rag_agent.to_cli_sync("what is pythagorous threorem")
 
 
 if __name__ == "__main__":

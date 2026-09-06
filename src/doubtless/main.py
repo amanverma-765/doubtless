@@ -1,8 +1,9 @@
+from doubtless.rag.index import build_index
 from doubtless.rag.retrieve import search
 
 
 def main() -> None:
-    print("Hello World")
+    build_index()
     res = search("what is pythjagoral theorem ?")
     print(res)
 

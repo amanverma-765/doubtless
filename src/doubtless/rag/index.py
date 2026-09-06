@@ -15,7 +15,7 @@ from sentence_transformers import SentenceTransformer
 from transformers import AutoTokenizer, PreTrainedTokenizerBase
 
 from doubtless.rag.clean import clean_text, decode_glyphs, strip_running_heads
-from doubtless.rag.download import BOOKS_DIR, BY_FOLDER
+from doubtless.rag.download import BOOKS_DIR, BY_FOLDER, download_books
 from doubtless.rag.model import Chunk
 
 MODEL = "Qwen/Qwen3-Embedding-0.6B"
@@ -144,23 +144,30 @@ def _ingest(chunks: list[Chunk], vectors: NDArray[np.float32]) -> None:
 
 
 def build_index(books_dir: Path = BOOKS_DIR) -> None:
-    """Build the vector index chapter by chapter, skipping chapters already in
-    the store so an interrupted run resumes."""
+    """Build the vector index from all downloaded book chapters.
+
+    Already indexed chapters are skipped so the process can resume safely.
+    """
     store = vector_store()
-    for pdf in sorted(books_dir.rglob("chapter_*.pdf")):
+
+    for pdf in download_books(books_dir):
         grade, book, chapter = _book_source(pdf)
 
-        # A chapter is one upsert, so chunk 0 present means the chapter is indexed.
+        # Skip the chapter if its first chunk is already indexed.
         if store.get(ids=[f"{grade}/{book}/{chapter}/0"], include=[])["ids"]:
             continue
 
-        # Create overlapping token chunks from the chapter pages.
+        # Load the chapter pages and split them into overlapping chunks.
         pages = _load(pdf)
         chunks = _chunk(pages, grade, book, chapter)
 
-        # Generate vector embeddings for all text chunks.
+        # Create embeddings for each text chunk.
         vectors = embed([c.text for c in chunks])
 
-        # Ingest chunks into ChromaDB.
+        # Store the chunks and their embeddings in the vector index.
         _ingest(chunks, vectors)
-        print(f"class {grade} {book} ch {chapter}: {len(chunks)} chunks", flush=True)
+
+        print(
+            f"class {grade} {book} ch {chapter}: {len(chunks)} chunks",
+            flush=True,
+        )

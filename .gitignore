@@ -15,6 +15,7 @@ build/
 !.idea/runConfigurations/
 .omc
 .claude
+.env
 
 # OS
 .DS_Store

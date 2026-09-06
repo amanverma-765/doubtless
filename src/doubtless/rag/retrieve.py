@@ -4,14 +4,16 @@ from doubtless.rag.index import embed, vector_store
 from doubtless.rag.model import Chunk
 
 
-def search(query: str, k: int = 5) -> list[Chunk]:
-    """Return the k chunks nearest the query, at most one per stretch of text:
-    a chunk next to one already chosen shares 125 tokens with it and is
-    skipped so k answers cover k passages."""
+def retrieve(query: str, k: int = 5) -> list[Chunk]:
+    """Search the indexed document and return the k most relevant text chunks.
+
+    Nearby chunks from the same chapter are skipped to return passages from
+    distinct parts of the document.
+    """
     vector = embed([query], True)
     hits = vector_store().query(
         query_embeddings=vector,
-        n_results=4 * k,  # room to drop neighbours and still fill k
+        n_results=4 * k,  # room to drop neighbors and still fill k
         include=["documents", "metadatas"],
     )
     docs, metas = hits["documents"], hits["metadatas"]

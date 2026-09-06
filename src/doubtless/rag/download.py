@@ -120,8 +120,12 @@ BY_FOLDER = {book.folder: book for book in BOOKS}
 
 
 def download_books(outdir: Path = BOOKS_DIR) -> list[Path]:
-    """Download every book as one PDF per chapter. Returns the PDFs on disk."""
+    """Download all books as chapter-level PDFs and return their paths.
+
+    Existing book folders are skipped, and preliminary pages are excluded.
+    """
     outdir.mkdir(parents=True, exist_ok=True)
+    cached = all((outdir / book.folder).is_dir() for book in BOOKS)
     # Prelims are the cover and contents: no prose to retrieve, and their page
     # numbering does not line up with the chapters'.
     done = subprocess.run(
@@ -134,12 +138,16 @@ def download_books(outdir: Path = BOOKS_DIR) -> list[Path]:
             "--no-prelims",
             "-o",
             str(outdir),
-        ]
+        ],
+        stdout=subprocess.PIPE if cached else None,
+        stderr=subprocess.STDOUT,
+        text=True,
     )
     chapters = sorted(outdir.glob("*/chapter_*.pdf"))
     if done.returncode:
         raise RuntimeError(
             f"ncert exited {done.returncode}; {len(chapters)} chapters landed. "
-            "Call download() again to retry only the books that failed."
+            "Call download_books() again to retry only the books that failed."
+            + (f"\n{done.stdout}" if done.stdout else "")
         )
     return chapters

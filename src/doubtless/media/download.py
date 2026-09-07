@@ -4,9 +4,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from doubtless.config import BOOKS_DIR
 from doubtless.rag.model import Book
-
-BOOKS_DIR = Path(__file__).resolve().parents[3] / "data" / "books"
 
 BOOKS = (
     Book(

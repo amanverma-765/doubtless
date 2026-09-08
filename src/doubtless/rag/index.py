@@ -15,7 +15,7 @@ from sentence_transformers import SentenceTransformer
 from transformers import AutoTokenizer, PreTrainedTokenizerBase
 
 from doubtless.rag.clean import clean_text, decode_glyphs, strip_running_heads
-from doubtless.rag.download import BOOKS_DIR, BY_FOLDER, download_books
+from doubtless.media.download import BOOKS_DIR, BY_FOLDER, download_books
 from doubtless.rag.model import Chunk
 
 MODEL = "Qwen/Qwen3-Embedding-0.6B"

@@ -1,0 +1,35 @@
+services:
+  redis:
+    image: redis:7-alpine
+    ports: ["6379:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build: .
+    command: uv run doubtless api
+    ports: ["8000:8000"]
+    environment: &backend_env
+      REDIS_URL: redis://redis:6379/0
+      DOUBTLESS_DATA: /app/data
+      HOST: 0.0.0.0
+      PORT: 8000
+      CORS_ORIGINS: "http://localhost:3000,http://127.0.0.1:3000,*"
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  worker:
+    build: .
+    command: uv run doubtless worker
+    environment: *backend_env
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      redis:
+        condition: service_healthy

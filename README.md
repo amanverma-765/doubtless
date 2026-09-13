@@ -10,20 +10,23 @@ interpreter if you don't already have one.
 | Command | |
 | --- | --- |
 | `uv sync` | create `.venv` and install dependencies |
-| `uv run doubtless` | run the CLI |
+| `uv run doubtless api` | run the FastAPI server (default: port 8000) |
+| `uv run doubtless worker` | run the Celery background worker |
+| `uv run doubtless index` | build NCERT textbook vector index |
 | `uv run ruff check --fix .` | lint |
 | `uv run ruff format .` | format |
-| `uv run mypy` | type-check |
-| `uvx pre-commit install` | check every commit, once per clone |
+| `uv run mypy` | type-check (strict mode) |
 
-### Layout
+### Architecture Layout
 
-| Path | |
+| Path | Responsibility |
 | --- | --- |
-| `src/doubtless/main.py` | `main()`, what the console script calls |
-| `pyproject.toml` | dependencies, entry point, ruff, mypy and pytest config |
-| `.pre-commit-config.yaml` | the commit hooks |
-| `.idea/runConfigurations/` | the PyCharm run config, committed so it is shared |
+| `src/doubtless/api/` | FastAPI presentation layer: modular REST routers and streaming upload manager |
+| `src/doubtless/domain/` | Pydantic schemas and domain type definitions |
+| `src/doubtless/storage/` | Persistence: SQLite engine (WAL mode) and filesystem layout |
+| `src/doubtless/media/` | Domain services: FFprobe inspection, FFmpeg command builder, non-blocking progress parser & cancellation |
+| `src/doubtless/worker/` | Asynchronous Celery tasks for media transcoding |
+| `src/doubtless/rag/` | Knowledge retrieval & doubt resolution agent |
 
 ### Dependencies
 

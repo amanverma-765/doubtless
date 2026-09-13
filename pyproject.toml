@@ -6,29 +6,38 @@ description = "An interactive platform providing real-time doubt resolution acro
 requires-python = ">=3.14"
 dependencies = [
     "celery>=5.6.3",
-    "celery-types>=0.26.0",
     "chromadb>=1.5.9",
     "fastapi>=0.141.1",
     "ncert-cli>=1.0.3",
     "numpy==2.5.3",
     "pydantic>=2.13.5",
-    "pydantic-ai>=2.40.0",
+    "pydantic-ai==2.43.0",
     "pymupdf>=1.28.2",
     "python-dotenv>=1.2.3",
     "redis>=8.1.0",
     "sentence-transformers>=5.0",
     "torch>=2.14.0",
-    "transformers>=5.16.1",
+    "uvicorn[standard]>=0.30.0",
 ]
 
 [dependency-groups]
-dev = ["ruff>=0.14", "mypy>=1.18"]
+dev = [
+    "celery-types>=0.26.0",
+    "mypy>=1.18",
+    "ruff>=0.14",
+]
 
 [project.scripts]
 doubtless = "doubtless.main:main"
 
+[tool.ruff]
+line-length = 88
+
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = ["fastapi.Depends", "fastapi.params.Depends"]
 
 [tool.mypy]
 files = ["src"]

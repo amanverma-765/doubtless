@@ -1,20 +1,15 @@
-import os
+"""AI doubt-solving agent built on Pydantic AI and local textbook retrieval."""
 
-import dotenv
 from pydantic_ai import Agent
 from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.providers.openai import OpenAIProvider
 
+from doubtless.config import AI_API_KEY, AI_BASE_URL, AI_MODEL_NAME
 from doubtless.rag.retrieve import retrieve
 
-dotenv.load_dotenv()
-
-# used 9Router proxy as the model provider
 _model = OpenAIChatModel(
-    model_name="cx/gpt-5.6-luna",
-    provider=OpenAIProvider(
-        base_url="http://localhost:20128/v1", api_key=os.environ["NINEROUTER_API_KEY"]
-    ),
+    model_name=AI_MODEL_NAME,
+    provider=OpenAIProvider(base_url=AI_BASE_URL, api_key=AI_API_KEY),
 )
 
 rag_agent = Agent(

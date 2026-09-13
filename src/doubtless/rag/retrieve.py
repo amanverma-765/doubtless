@@ -1,7 +1,7 @@
 """Query-time lookup against the index built by index.py."""
 
 from doubtless.rag.index import embed, vector_store
-from doubtless.rag.model import Chunk
+from doubtless.rag.models import Chunk
 
 
 def retrieve(query: str, k: int = 5) -> list[Chunk]:

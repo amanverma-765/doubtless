@@ -3,7 +3,7 @@
 from bisect import bisect_right
 from functools import cache
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 
 import chromadb
 import numpy as np
@@ -12,11 +12,11 @@ from chromadb.api.models.Collection import Collection
 from numpy.typing import NDArray
 from pymupdf import pymupdf
 from sentence_transformers import SentenceTransformer
-from transformers import AutoTokenizer, PreTrainedTokenizerBase
 
+from doubtless.config import INDEX_DIR
+from doubtless.rag.books import BOOKS_DIR, BY_FOLDER, download_books
 from doubtless.rag.clean import clean_text, decode_glyphs, strip_running_heads
-from doubtless.media.download import BOOKS_DIR, BY_FOLDER, download_books
-from doubtless.rag.model import Chunk
+from doubtless.rag.models import Chunk
 
 MODEL = "Qwen/Qwen3-Embedding-0.6B"
 
@@ -24,22 +24,20 @@ MODEL = "Qwen/Qwen3-Embedding-0.6B"
 @cache
 def vector_store() -> Collection:
     """Initialize and return the ChromaDB collection for the vector store."""
-    _INDEX_DIR = Path(__file__).resolve().parents[3] / "data" / "index"
-    client = chromadb.PersistentClient(path=_INDEX_DIR / "chroma_db")
+    client = chromadb.PersistentClient(path=str(INDEX_DIR / "chroma_db"))
     return client.get_or_create_collection(name="ncert")
-
-
-@cache
-def _tokenizer() -> PreTrainedTokenizerBase:
-    """Load the embedding model's tokenizer so chunk windows are sized in its
-    own token units."""
-    return AutoTokenizer.from_pretrained(MODEL)
 
 
 @cache
 def _model() -> SentenceTransformer:
     """Load and return the SentenceTransformer embedding model."""
     return SentenceTransformer(MODEL, model_kwargs={"torch_dtype": torch.float32})
+
+
+def _tokenizer() -> Any:
+    """Return the embedding model's tokenizer so chunk windows are sized in its
+    own token units."""
+    return _model().tokenizer
 
 
 def _book_source(pdf: Path) -> tuple[int, str, int]:

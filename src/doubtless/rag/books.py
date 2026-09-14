@@ -1,11 +1,13 @@
-"""Refetch the textbooks under data/books, which git does not carry."""
+"""NCERT textbook corpus catalog and chapter-level PDF download pipeline."""
 
 import subprocess
 import sys
 from pathlib import Path
 
 from doubtless.config import BOOKS_DIR
-from doubtless.rag.model import Book
+from doubtless.rag.models import Book
+
+__all__ = ["BOOKS", "BOOKS_DIR", "BY_FOLDER", "download_books"]
 
 BOOKS = (
     Book(

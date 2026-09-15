@@ -68,12 +68,17 @@ def probe_video(src: Path) -> MediaProbe:
         raise MediaError("No valid video stream found in media file")
 
     format_info = info.get("format", {})
-    raw_duration = format_info.get("duration") or video.get("duration") or 0.0
-
-    try:
-        duration = float(raw_duration)
-    except ValueError, TypeError:
-        duration = 0.0
+    raw_duration = format_info.get("duration")
+    duration = 0.0
+    for cand in (raw_duration, video.get("duration")):
+        if cand is not None:
+            try:
+                val = float(cand)
+                if val > 0:
+                    duration = val
+                    break
+            except ValueError, TypeError:
+                continue
 
     return MediaProbe(
         duration=duration,

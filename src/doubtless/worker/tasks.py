@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from doubtless.media.transcoder import extract_poster, transcode_with_progress
-from doubtless.storage import db, file_storage
+from doubtless.storage import db, file_storage, redis_store
 from doubtless.worker.celery_app import celery_app
 
 
@@ -21,11 +21,11 @@ def transcode_video(
     out.mkdir(parents=True, exist_ok=True)
 
     def is_cancelled() -> bool:
-        return db.get_video(video_id) is None
+        return redis_store.is_cancelled(video_id) or db.get_video(video_id) is None
 
     def on_prog(p: float) -> None:
         self.update_state(state="PROGRESS", meta={"progress": p})
-        db.update_video(video_id, status="processing", progress=p)
+        redis_store.set_transcode_progress(video_id, p)
 
     try:
         # Extract poster thumbnail frame (non-fatal)
@@ -40,6 +40,8 @@ def transcode_video(
 
         if is_cancelled():
             shutil.rmtree(out, ignore_errors=True)
+            redis_store.delete_transcode_progress(video_id)
+            redis_store.clear_cancellation(video_id)
             return {"cancelled": True}
 
         playlist = file_storage.playlist_url(video_id)
@@ -47,10 +49,10 @@ def transcode_video(
         db.update_video(
             video_id,
             status="ready",
-            progress=1.0,
             playlist=playlist,
             poster=poster,
         )
+        redis_store.delete_transcode_progress(video_id)
         return {"playlist": playlist, "poster": poster}
 
     except Exception as exc:
@@ -59,4 +61,5 @@ def transcode_video(
             status="error",
             error=str(exc),
         )
+        redis_store.delete_transcode_progress(video_id)
         raise exc

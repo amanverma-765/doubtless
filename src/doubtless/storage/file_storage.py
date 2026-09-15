@@ -8,7 +8,6 @@ from doubtless.config import (
     BOOKS_DIR,
     DATA_DIR,
     HLS_DIR,
-    HLS_URL_PREFIX,
     INDEX_DIR,
     VIDEO_DIR,
 )
@@ -31,13 +30,13 @@ def hls_dir(video_id: str) -> Path:
 
 def playlist_url(video_id: str) -> str:
     """Return the relative web URL for the HLS playlist."""
-    return f"{HLS_URL_PREFIX}/{video_id}/index.m3u8"
+    return f"/hls/{video_id}/index.m3u8"
 
 
 def poster_url(video_id: str) -> str | None:
     """Return the relative web URL for the poster thumbnail if present."""
     if (hls_dir(video_id) / "poster.jpg").is_file():
-        return f"{HLS_URL_PREFIX}/{video_id}/poster.jpg"
+        return f"/hls/{video_id}/poster.jpg"
     return None
 
 
@@ -60,14 +59,23 @@ def ensure_dirs() -> None:
     BOOKS_DIR.mkdir(parents=True, exist_ok=True)
 
 
+def is_safe_id(video_id: str) -> bool:
+    """Validate video_id contains only alphanumeric chars, dashes, or underscores."""
+    return bool(video_id and all(c.isalnum() or c in "-_" for c in video_id))
+
+
 def delete_video_files(video_id: str) -> None:
     """Delete only the specific video files and HLS directory without wiping others."""
-    # Delete HLS folder
-    hls_path = hls_dir(video_id)
-    if hls_path.exists():
+    if not is_safe_id(video_id):
+        return
+
+    # Delete HLS folder safely confined within HLS_DIR
+    hls_root = HLS_DIR.resolve()
+    hls_path = (HLS_DIR / video_id).resolve()
+    if hls_path != hls_root and hls_path.is_relative_to(hls_root) and hls_path.exists():
         shutil.rmtree(hls_path, ignore_errors=True)
 
-    # Delete source video files matching this ID
+    # Delete source video files matching this video ID
     if VIDEO_DIR.exists():
         for f in VIDEO_DIR.glob(f"{video_id}.*"):
             f.unlink(missing_ok=True)

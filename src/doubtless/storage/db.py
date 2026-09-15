@@ -8,8 +8,12 @@ from pathlib import Path
 from typing import Any
 
 from doubtless.config import DATA_DIR
-from doubtless.domain.schemas import ChatMessage, VideoItemResponse
-from doubtless.domain.types import MessageRole, VideoStatusState
+from doubtless.domain.schemas import (
+    ChatMessage,
+    MessageRole,
+    VideoItemResponse,
+    VideoStatusState,
+)
 
 DB_PATH: Path = DATA_DIR / "doubtless.db"
 _tables_initialized: bool = False
@@ -29,7 +33,6 @@ def _ensure_tables(conn: sqlite3.Connection) -> None:
                 playlist TEXT,
                 poster TEXT,
                 status TEXT NOT NULL DEFAULT 'processing',
-                progress REAL DEFAULT 0.0,
                 error TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
@@ -64,18 +67,17 @@ def get_db() -> Generator[sqlite3.Connection]:
 
 def _row_to_video(row: sqlite3.Row) -> VideoItemResponse:
     """Convert an SQLite row into a validated VideoItemResponse schema."""
-    return VideoItemResponse(
-        id=row["id"],
-        title=row["title"],
-        filename=row["filename"],
-        task_id=row["task_id"],
-        playlist=row["playlist"],
-        poster=row["poster"],
-        status=row["status"],
-        progress=float(row["progress"] or 0.0),
-        error=row["error"],
-        created_at=row["created_at"] or "",
-    )
+    data = dict(row)
+    data["progress"] = 1.0 if data["status"] == "ready" else 0.0
+    data["created_at"] = data["created_at"] or ""
+    return VideoItemResponse.model_validate(data)
+
+
+def _row_to_message(row: sqlite3.Row) -> ChatMessage:
+    """Convert an SQLite row into a validated ChatMessage schema."""
+    data = dict(row)
+    data["created_at"] = data["created_at"] or ""
+    return ChatMessage.model_validate(data)
 
 
 def create_video(
@@ -83,25 +85,26 @@ def create_video(
     title: str,
     filename: str,
     task_id: str | None = None,
+    status: VideoStatusState = "uploading",
 ) -> VideoItemResponse:
-    """Register a new video record with initial 'processing' status."""
+    """Register a new video record with initial status ('uploading' by default)."""
     now = datetime.now(UTC).isoformat()
     with get_db() as conn:
         conn.execute(
             """
             INSERT OR REPLACE INTO videos (
-                id, title, filename, task_id, status, progress, created_at
+                id, title, filename, task_id, status, created_at
             )
-            VALUES (?, ?, ?, ?, 'processing', 0.0, ?)
+            VALUES (?, ?, ?, ?, ?, ?)
             """,
-            (video_id, title, filename, task_id, now),
+            (video_id, title, filename, task_id, status, now),
         )
     return VideoItemResponse(
         id=video_id,
         title=title,
         filename=filename,
         task_id=task_id,
-        status="processing",
+        status=status,
         progress=0.0,
         created_at=now,
     )
@@ -111,15 +114,6 @@ def get_video(video_id: str) -> VideoItemResponse | None:
     """Retrieve a video by unique ID."""
     with get_db() as conn:
         row = conn.execute("SELECT * FROM videos WHERE id = ?", (video_id,)).fetchone()
-        return _row_to_video(row) if row else None
-
-
-def get_latest_video() -> VideoItemResponse | None:
-    """Retrieve the most recently created video."""
-    with get_db() as conn:
-        row = conn.execute(
-            "SELECT * FROM videos ORDER BY created_at DESC LIMIT 1"
-        ).fetchone()
         return _row_to_video(row) if row else None
 
 
@@ -133,7 +127,6 @@ def list_videos() -> list[VideoItemResponse]:
 def update_video(
     video_id: str,
     status: VideoStatusState | None = None,
-    progress: float | None = None,
     playlist: str | None = None,
     poster: str | None = None,
     task_id: str | None = None,
@@ -145,9 +138,6 @@ def update_video(
     if status is not None:
         fields.append("status = ?")
         params.append(status)
-    if progress is not None:
-        fields.append("progress = ?")
-        params.append(progress)
     if playlist is not None:
         fields.append("playlist = ?")
         params.append(playlist)
@@ -206,14 +196,7 @@ def get_messages(video_id: str) -> list[ChatMessage]:
             """,
             (video_id,),
         ).fetchall()
-        return [
-            ChatMessage(
-                role=row["role"],
-                content=row["content"],
-                created_at=row["created_at"] or "",
-            )
-            for row in rows
-        ]
+        return [_row_to_message(row) for row in rows]
 
 
 def init_db() -> None:

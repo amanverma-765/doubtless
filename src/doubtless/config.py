@@ -29,9 +29,6 @@ CORS_ORIGINS: list[str] = [
     origin.strip() for origin in _cors_raw.split(",") if origin.strip()
 ]
 
-# Presentation & static file URLs
-HLS_URL_PREFIX = os.getenv("HLS_URL_PREFIX", "/hls")
-
 # AI & RAG configuration
 AI_MODEL_NAME = os.getenv("AI_MODEL_NAME", "cx/gpt-5.6-luna")
 AI_BASE_URL = os.getenv("AI_BASE_URL", "http://localhost:20128/v1")

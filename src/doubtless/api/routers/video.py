@@ -1,16 +1,11 @@
 """Video management endpoints: listing, metadata, streaming, and deletion."""
 
+import contextlib
 from pathlib import PurePosixPath
 
 from fastapi import APIRouter, HTTPException, Request
 
-from doubtless.api.upload_manager import (
-    UploadTracking,
-    get_active_upload,
-    stream_to_file,
-    track_upload,
-    untrack_upload,
-)
+from doubtless.api.upload_manager import stream_to_file
 from doubtless.config import ALLOWED_EXTENSIONS, MAX_UPLOAD_BYTES
 from doubtless.domain.schemas import (
     UploadAcceptedResponse,
@@ -19,8 +14,8 @@ from doubtless.domain.schemas import (
     VideoItemResponse,
     VideoStatusResponse,
 )
-from doubtless.storage import db, file_storage
-from doubtless.worker.celery_app import get_task_error
+from doubtless.storage import db, file_storage, redis_store
+from doubtless.worker.celery_app import celery_app, get_task_error
 from doubtless.worker.tasks import transcode_video
 
 router = APIRouter(prefix="/videos", tags=["videos"])
@@ -29,7 +24,17 @@ router = APIRouter(prefix="/videos", tags=["videos"])
 @router.get("", response_model=list[VideoItemResponse])
 def list_all_videos() -> list[VideoItemResponse]:
     """Retrieve all uploaded and processed videos."""
-    return db.list_videos()
+    videos = db.list_videos()
+    processing_ids = [v.id for v in videos if v.status == "processing"]
+    progress_map = (
+        redis_store.get_transcode_progress_batch(processing_ids)
+        if processing_ids
+        else {}
+    )
+    for v in videos:
+        if v.status == "processing":
+            v.progress = progress_map.get(v.id, 0.0)
+    return videos
 
 
 @router.get("/config", response_model=UploadConfigResponse)
@@ -41,44 +46,33 @@ def get_upload_config() -> UploadConfigResponse:
     )
 
 
-@router.get("/status", response_model=VideoStatusResponse)
-def get_video_status(video_id: str | None = None) -> VideoStatusResponse:
-    """Query transcoding status for a given or latest video."""
-    target_id = video_id
-
-    # 1. Check in-flight upload progress
-    current_upload = get_active_upload(target_id)
-    if current_upload:
-        progress = (
-            current_upload.received / current_upload.total
-            if current_upload.total > 0
-            else 0.0
-        )
-        return VideoStatusResponse(
-            state="uploading",
-            progress=progress,
-            id=current_upload.video_id,
-        )
-
+@router.get("/{video_id}/status", response_model=VideoStatusResponse)
+def get_video_status(video_id: str) -> VideoStatusResponse:
+    """Query transcoding status for a given video."""
+    target_id = video_id.strip()
     if not target_id:
-        latest = db.get_latest_video()
-        if not latest:
-            return VideoStatusResponse(state="idle")
-        target_id = latest.id
+        return VideoStatusResponse(state="idle")
 
-    # 2. Check Database record
+    # 1. Check Database record
     v = db.get_video(target_id)
     if not v:
         return VideoStatusResponse(state="idle")
 
-    # 3. Check filesystem HLS readiness
+    if v.status == "error":
+        return VideoStatusResponse(
+            state="error",
+            progress=0.0,
+            id=target_id,
+            error=v.error or "Transcoding failed. Please check the video format.",
+        )
+
+    # 2. Check filesystem HLS readiness
     if file_storage.is_playlist_ready(target_id):
         playlist_url = file_storage.playlist_url(target_id)
         if v.status != "ready":
             db.update_video(
                 target_id,
                 status="ready",
-                progress=1.0,
                 playlist=playlist_url,
                 poster=file_storage.poster_url(target_id),
             )
@@ -89,15 +83,7 @@ def get_video_status(video_id: str | None = None) -> VideoStatusResponse:
             playlist=v.playlist or playlist_url,
         )
 
-    if v.status == "error":
-        return VideoStatusResponse(
-            state="error",
-            progress=0.0,
-            id=target_id,
-            error=v.error or "Transcoding failed. Please check the video format.",
-        )
-
-    # 4. Check Celery task if unexpectedly failed
+    # 3. Check Celery task if unexpectedly failed
     if v.task_id:
         err_msg = get_task_error(v.task_id)
         if err_msg:
@@ -109,9 +95,10 @@ def get_video_status(video_id: str | None = None) -> VideoStatusResponse:
                 error=err_msg,
             )
 
+    current_progress = redis_store.get_transcode_progress(target_id)
     return VideoStatusResponse(
         state="processing",
-        progress=v.progress,
+        progress=current_progress,
         id=target_id,
     )
 
@@ -125,6 +112,8 @@ def get_video_by_id(video_id: str) -> VideoItemResponse:
             status_code=404,
             detail=f"Video '{video_id}' not found",
         )
+    if v.status == "processing":
+        v.progress = redis_store.get_transcode_progress(video_id)
     return v
 
 
@@ -162,32 +151,52 @@ async def upload_video(
     db.create_video(video_id, title=video_title, filename=filename)
 
     dest_path = file_storage.source_path(video_id, ext)
-    tracker = UploadTracking(video_id=video_id, received=0, total=total_bytes)
-    track_upload(tracker)
 
     try:
         await stream_to_file(
             request,
             dest_path,
-            tracker,
+            video_id,
             max_bytes=MAX_UPLOAD_BYTES,
         )
+        if not dest_path.exists() or dest_path.stat().st_size == 0:
+            raise HTTPException(
+                status_code=400,
+                detail="Uploaded file is empty (0 bytes).",
+            )
+        if redis_store.is_cancelled(video_id) or not db.get_video(video_id):
+            raise HTTPException(
+                status_code=409,
+                detail="Upload cancelled or video record deleted.",
+            )
+
+        # Dispatch Celery transcode task
+        task = transcode_video.delay(video_id, str(dest_path))
+        db.update_video(video_id, status="processing", task_id=task.id)
     except BaseException:
+        file_storage.delete_video_files(video_id)
         db.delete_video(video_id)
         raise
-    finally:
-        untrack_upload(video_id)
-
-    # Dispatch Celery transcode task
-    task = transcode_video.delay(video_id, str(dest_path))
-    db.update_video(video_id, task_id=task.id)
 
     return UploadAcceptedResponse(id=video_id)
 
 
 @router.delete("/{video_id}", response_model=VideoDeleteResponse)
 def delete_video_by_id(video_id: str) -> VideoDeleteResponse:
-    """Delete a video, its HLS streaming files, and associated doubt history."""
+    """Delete a video, revoke its transcode task, and clear files/records."""
+    if not file_storage.is_safe_id(video_id):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid video identifier format",
+        )
+
+    v = db.get_video(video_id)
+    if v and v.task_id:
+        with contextlib.suppress(Exception):
+            celery_app.control.revoke(v.task_id, terminate=True, signal="SIGTERM")
+
+    redis_store.set_cancellation(video_id)
+    redis_store.delete_transcode_progress(video_id)
     file_storage.delete_video_files(video_id)
     db.delete_video(video_id)
     return VideoDeleteResponse(id=video_id)

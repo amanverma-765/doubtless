@@ -6,13 +6,14 @@ from doubtless.domain.schemas import (
     ChatRequest,
     ChatResponse,
     HealthResponse,
+    MessageRole,
     UploadAcceptedResponse,
     UploadConfigResponse,
     VideoDeleteResponse,
     VideoItemResponse,
     VideoStatusResponse,
+    VideoStatusState,
 )
-from doubtless.domain.types import MessageRole, VideoStatusState
 
 __all__ = [
     "ChatHistoryResponse",

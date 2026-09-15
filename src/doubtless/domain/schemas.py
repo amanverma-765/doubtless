@@ -5,7 +5,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from doubtless.domain.types import MessageRole, VideoStatusState
+VideoStatusState = Literal["idle", "uploading", "processing", "ready", "error"]
+MessageRole = Literal["user", "assistant", "system"]
 
 
 class VideoItemResponse(BaseModel):
@@ -65,8 +66,7 @@ class ChatRequest(BaseModel):
     """Request payload for submitting a student doubt."""
 
     message: str
-    video_id: str | None = None
-    history: list[ChatMessage] = Field(default_factory=list)
+    video_id: str
 
 
 class ChatResponse(BaseModel):

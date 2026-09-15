@@ -49,10 +49,10 @@ def create_app() -> FastAPI:
     # Static file mount for HLS video chunks and playlists
     app.mount("/hls", StaticFiles(directory=HLS_DIR), name="hls")
 
-    # API v1 routers
+    # Routers
+    app.include_router(health_router)
     app.include_router(video_router, prefix="/api/v1")
     app.include_router(chat_router, prefix="/api/v1")
-    app.include_router(health_router, prefix="/api/v1")
 
     return app
 

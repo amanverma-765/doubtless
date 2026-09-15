@@ -15,11 +15,13 @@ def main() -> None:
         print(f"Starting doubtless API server on {HOST}:{PORT}...")
         uvicorn.run("doubtless.api.app:app", host=HOST, port=PORT, reload=False)
     elif command == "worker":
+        # Lazy import to avoid Celery startup overhead on other subcommands
         from doubtless.worker.celery_app import celery_app
 
         print("Starting doubtless Celery worker...")
         celery_app.worker_main(["worker", "--loglevel=info", "--concurrency=1"])
     elif command == "index":
+        # Lazy import to avoid ~3s PyTorch overhead on api/worker
         from doubtless.rag.index import build_index
 
         print("Building NCERT vector index...")

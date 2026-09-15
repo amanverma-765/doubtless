@@ -158,6 +158,12 @@ def build_index(books_dir: Path = BOOKS_DIR) -> None:
         # Load the chapter pages and split them into overlapping chunks.
         pages = _load(pdf)
         chunks = _chunk(pages, grade, book, chapter)
+        if not chunks:
+            print(
+                f"class {grade} {book} ch {chapter}: 0 chunks (skipped)",
+                flush=True,
+            )
+            continue
 
         # Create embeddings for each text chunk.
         vectors = embed([c.text for c in chunks])

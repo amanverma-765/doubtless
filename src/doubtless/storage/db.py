@@ -15,7 +15,7 @@ from doubtless.domain.schemas import (
     VideoStatusState,
 )
 
-DB_PATH: Path = DATA_DIR / "doubtless.db"
+_DB_PATH: Path = DATA_DIR / "doubtless.db"
 _tables_initialized: bool = False
 
 
@@ -50,9 +50,9 @@ def _ensure_tables(conn: sqlite3.Connection) -> None:
 
 
 @contextmanager
-def get_db() -> Generator[sqlite3.Connection]:
+def _get_db() -> Generator[sqlite3.Connection]:
     """Context manager providing a transactional SQLite connection."""
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(_DB_PATH)
     conn.row_factory = sqlite3.Row
     _ensure_tables(conn)
     try:
@@ -89,7 +89,7 @@ def create_video(
 ) -> VideoItemResponse:
     """Register a new video record with initial status ('uploading' by default)."""
     now = datetime.now(UTC).isoformat()
-    with get_db() as conn:
+    with _get_db() as conn:
         conn.execute(
             """
             INSERT OR REPLACE INTO videos (
@@ -112,14 +112,14 @@ def create_video(
 
 def get_video(video_id: str) -> VideoItemResponse | None:
     """Retrieve a video by unique ID."""
-    with get_db() as conn:
+    with _get_db() as conn:
         row = conn.execute("SELECT * FROM videos WHERE id = ?", (video_id,)).fetchone()
         return _row_to_video(row) if row else None
 
 
 def list_videos() -> list[VideoItemResponse]:
     """List all video records ordered by creation time descending."""
-    with get_db() as conn:
+    with _get_db() as conn:
         rows = conn.execute("SELECT * FROM videos ORDER BY created_at DESC").fetchall()
         return [_row_to_video(row) for row in rows]
 
@@ -153,7 +153,7 @@ def update_video(
 
     if fields:
         params.append(video_id)
-        with get_db() as conn:
+        with _get_db() as conn:
             conn.execute(
                 f"UPDATE videos SET {', '.join(fields)} WHERE id = ?",
                 params,
@@ -162,7 +162,7 @@ def update_video(
 
 def delete_video(video_id: str) -> bool:
     """Delete a video and its associated message history."""
-    with get_db() as conn:
+    with _get_db() as conn:
         cursor = conn.execute("DELETE FROM videos WHERE id = ?", (video_id,))
         conn.execute("DELETE FROM messages WHERE video_id = ?", (video_id,))
         return cursor.rowcount > 0
@@ -175,7 +175,7 @@ def add_message(
 ) -> ChatMessage:
     """Persist a new message linked to a specific video."""
     now = datetime.now(UTC).isoformat()
-    with get_db() as conn:
+    with _get_db() as conn:
         conn.execute(
             """
             INSERT INTO messages (video_id, role, content, created_at)
@@ -188,7 +188,7 @@ def add_message(
 
 def get_messages(video_id: str) -> list[ChatMessage]:
     """Fetch all chat messages for a specific video in chronological order."""
-    with get_db() as conn:
+    with _get_db() as conn:
         rows = conn.execute(
             """
             SELECT role, content, created_at FROM messages
@@ -202,14 +202,14 @@ def get_messages(video_id: str) -> list[ChatMessage]:
 def init_db() -> None:
     """Initialize database directory and tables."""
     DATA_DIR.mkdir(parents=True, exist_ok=True)
-    with get_db():
+    with _get_db():
         pass
 
 
 def check_db_health() -> bool:
     """Verify database read and write capability."""
     try:
-        with get_db() as conn:
+        with _get_db() as conn:
             row = conn.execute("SELECT 1;").fetchone()
             return bool(row and row[0] == 1)
     except Exception:

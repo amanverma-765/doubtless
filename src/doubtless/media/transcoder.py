@@ -11,7 +11,7 @@ from pathlib import Path
 from doubtless.media.probe import MediaError, MediaProbe, probe_video
 
 
-def build_transcode_command(
+def _build_transcode_command(
     src: Path,
     out_dir: Path,
     info: MediaProbe,
@@ -121,7 +121,7 @@ def transcode_with_progress(
     info = probe_video(src)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    cmd = build_transcode_command(src, out_dir, info)
+    cmd = _build_transcode_command(src, out_dir, info)
 
     # Use a temporary file for stderr to avoid OS pipe deadlock on verbose warnings
     with tempfile.TemporaryFile() as stderr_file:

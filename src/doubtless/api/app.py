@@ -19,7 +19,7 @@ mimetypes.add_type("application/vnd.apple.mpegurl", ".m3u8")
 
 
 @asynccontextmanager
-async def lifespan(_: FastAPI) -> AsyncGenerator[None]:
+async def _lifespan(_: FastAPI) -> AsyncGenerator[None]:
     """Initialize filesystem directories and SQLite database on boot."""
     file_storage.ensure_dirs()
     init_db()
@@ -34,7 +34,7 @@ def create_app() -> FastAPI:
             "Video lecture streaming, HLS transcoding, and AI doubt-solving backend"
         ),
         version="1.0.0",
-        lifespan=lifespan,
+        lifespan=_lifespan,
     )
 
     # CORS middleware

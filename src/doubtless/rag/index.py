@@ -18,7 +18,7 @@ from doubtless.rag.books import BOOKS_DIR, BY_FOLDER, download_books
 from doubtless.rag.clean import clean_text, decode_glyphs, strip_running_heads
 from doubtless.rag.models import Chunk
 
-MODEL = "Qwen/Qwen3-Embedding-0.6B"
+_MODEL = "Qwen/Qwen3-Embedding-0.6B"
 
 
 @cache
@@ -31,7 +31,7 @@ def vector_store() -> Collection:
 @cache
 def _model() -> SentenceTransformer:
     """Load and return the SentenceTransformer embedding model."""
-    return SentenceTransformer(MODEL, model_kwargs={"torch_dtype": torch.float32})
+    return SentenceTransformer(_MODEL, model_kwargs={"torch_dtype": torch.float32})
 
 
 def _tokenizer() -> Any:

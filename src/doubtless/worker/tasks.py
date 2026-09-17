@@ -20,10 +20,10 @@ def transcode_video(
     shutil.rmtree(out, ignore_errors=True)
     out.mkdir(parents=True, exist_ok=True)
 
-    def is_cancelled() -> bool:
+    def _is_cancelled() -> bool:
         return redis_store.is_cancelled(video_id) or db.get_video(video_id) is None
 
-    def on_prog(p: float) -> None:
+    def _on_prog(p: float) -> None:
         self.update_state(state="PROGRESS", meta={"progress": p})
         redis_store.set_transcode_progress(video_id, p)
 
@@ -34,11 +34,11 @@ def transcode_video(
         transcode_with_progress(
             Path(src),
             out,
-            on_progress=on_prog,
-            should_stop=is_cancelled,
+            on_progress=_on_prog,
+            should_stop=_is_cancelled,
         )
 
-        if is_cancelled():
+        if _is_cancelled():
             shutil.rmtree(out, ignore_errors=True)
             redis_store.delete_transcode_progress(video_id)
             redis_store.clear_cancellation(video_id)

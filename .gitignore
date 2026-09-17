@@ -22,3 +22,9 @@ build/
 
 # downloaded books and built indexes
 data/
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.pnpm-store/
+

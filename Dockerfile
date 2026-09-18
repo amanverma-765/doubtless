@@ -9,8 +9,11 @@ ENV UV_LINK_MODE=copy UV_COMPILE_BYTECODE=1
 
 WORKDIR /app
 COPY pyproject.toml uv.lock README.md ./
-RUN uv sync --frozen --no-dev
-COPY . .
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-dev --no-install-project
+COPY src/ ./src/
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-dev
 
 # Default entrypoint runs doubtless CLI (defaults to api server)
 CMD ["uv", "run", "doubtless", "api"]

@@ -10,6 +10,7 @@ services:
 
   api:
     build: .
+    image: doubtless-backend:latest
     command: uv run doubtless api
     ports: ["8000:8000"]
     environment: &backend_env
@@ -26,6 +27,7 @@ services:
 
   worker:
     build: .
+    image: doubtless-backend:latest
     command: uv run doubtless worker
     environment: *backend_env
     volumes:
@@ -33,3 +35,13 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+      api:
+        condition: service_started
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports: ["3000:3000"]
+    depends_on:
+      - api

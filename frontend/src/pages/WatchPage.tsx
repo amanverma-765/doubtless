@@ -4,17 +4,20 @@ import { useParams, useNavigate, Link } from "react-router-dom";
 import { AlertCircle, ChevronLeft } from "lucide-react";
 import { TopBar } from "@/components/layout/TopBar";
 import { VideoSection } from "@/components/player/VideoSection";
+import { FeatureCards } from "@/components/player/FeatureCards";
 import { RightPanel } from "@/components/chat/RightPanel";
 import { UploadModal } from "@/components/upload/UploadModal";
 import { useVideoStatus } from "@/hooks/useVideoStatus";
 import { useVideoUpload } from "@/hooks/useVideoUpload";
 import { fetchVideoById } from "@/services/videoService";
+import type { FeatureTabKey } from "@/types";
 
 export const WatchPage: React.FC = () => {
   const { id: videoId } = useParams<{ id: string }>();
   const navigate = useNavigate();
 
   const [videoTitle, setVideoTitle] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<FeatureTabKey>("doubt");
 
   const { status, isNotFound } = useVideoStatus(videoId);
 
@@ -103,10 +106,10 @@ export const WatchPage: React.FC = () => {
         </div>
       )}
 
-      {/* STUDIO WORKSPACE (Player + Doubt Panel) */}
+      {/* STUDIO WORKSPACE (Player + Feature Cards + Doubt Panel) */}
       <main className="flex-1 w-full px-[var(--side)] py-3 overflow-hidden flex flex-col lg:flex-row items-start gap-4 justify-between">
-        {/* Left Column: Video */}
-        <div className="flex-1 min-w-0 w-full h-full flex flex-col justify-center items-center overflow-hidden">
+        {/* Left Column: Video & Feature Cards */}
+        <div className="flex-1 min-w-0 w-full h-full flex flex-col justify-between overflow-hidden">
           <div className="w-full flex-1 flex items-center justify-center min-h-0">
             <VideoSection
               status={status}
@@ -115,11 +118,15 @@ export const WatchPage: React.FC = () => {
               videoTitle={videoTitle || undefined}
             />
           </div>
+
+          <div className="w-full max-w-[var(--vidw)] mx-auto mt-2 shrink-0">
+            <FeatureCards activeTab={activeTab} onSelectTab={setActiveTab} />
+          </div>
         </div>
 
         {/* Right Column: Pinned Side Panel */}
         <div className="w-full lg:w-[var(--panel)] h-full shrink-0">
-          <RightPanel videoId={videoId || null} />
+          <RightPanel activeTab={activeTab} videoId={videoId || null} />
         </div>
       </main>
 

@@ -13,3 +13,5 @@ export interface ChatHistoryResponse {
   video_id: string;
   messages: ChatMessage[];
 }
+
+export type FeatureTabKey = "doubt" | "chapters" | "quiz" | "notes" | "flashcards";

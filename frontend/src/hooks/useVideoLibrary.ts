@@ -32,19 +32,20 @@ export function useVideoLibrary(): UseVideoLibraryResult {
     loadVideos();
   }, [loadVideos]);
 
+  const hasTranscoding = videos.some(
+    (v) => v.status === "processing" || v.status === "uploading"
+  );
+
   // If any video in library is actively processing or uploading, poll periodically
   useEffect(() => {
-    const hasTranscoding = videos.some(
-      (v) => v.status === "processing" || v.status === "uploading"
-    );
     if (!hasTranscoding) return;
 
     const interval = setInterval(() => {
       loadVideos(true);
-    }, 1500);
+    }, 1000);
 
     return () => clearInterval(interval);
-  }, [videos, loadVideos]);
+  }, [hasTranscoding, loadVideos]);
 
   const deleteVideo = async (id: string) => {
     // Optimistically update

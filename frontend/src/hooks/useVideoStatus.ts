@@ -57,11 +57,11 @@ export function useVideoStatus(videoId?: string | null): UseVideoStatusResult {
     if (!targetId || isNotFound) return;
     if (status?.state === "ready" || status?.state === "error") return;
 
-    const timer = setTimeout(() => {
+    const interval = setInterval(() => {
       poll();
-    }, 1200);
+    }, 1000);
 
-    return () => clearTimeout(timer);
+    return () => clearInterval(interval);
   }, [targetId, isNotFound, status?.state, poll]);
 
   return {

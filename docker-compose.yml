@@ -11,7 +11,7 @@ services:
   api:
     build: .
     image: doubtless-backend:latest
-    command: uv run doubtless api
+    command: uv run --no-dev doubtless api
     ports: ["8000:8000"]
     environment: &backend_env
       REDIS_URL: redis://redis:6379/0
@@ -19,6 +19,7 @@ services:
       HOST: 0.0.0.0
       PORT: 8000
       CORS_ORIGINS: "http://localhost:3000,http://127.0.0.1:3000,*"
+      NINEROUTER_API_KEY: ${NINEROUTER_API_KEY}
     volumes:
       - ./data:/app/data
     depends_on:
@@ -26,9 +27,8 @@ services:
         condition: service_healthy
 
   worker:
-    build: .
     image: doubtless-backend:latest
-    command: uv run doubtless worker
+    command: uv run --no-dev doubtless worker
     environment: *backend_env
     volumes:
       - ./data:/app/data

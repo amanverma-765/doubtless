@@ -22,7 +22,7 @@ def main() -> None:
         celery_app.worker_main(["worker", "--loglevel=info", "--concurrency=1"])
     elif command == "index":
         # Lazy import to avoid ~3s PyTorch overhead on api/worker
-        from doubtless.rag.index import build_index
+        from doubtless.rag.books.indexer import build_index
 
         print("Building NCERT vector index...")
         build_index()

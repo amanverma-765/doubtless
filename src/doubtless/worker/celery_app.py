@@ -17,6 +17,10 @@ celery_app.conf.update(
     task_acks_late=True,
     worker_prefetch_multiplier=1,
     broker_transport_options={"visibility_timeout": 86400},
+    broker_connection_retry_on_startup=True,
+    result_expires=3600,
+    task_time_limit=1800,
+    task_soft_time_limit=1500,
     task_serializer="json",
     result_serializer="json",
     accept_content=["json"],
@@ -29,6 +33,6 @@ def get_task_error(task_id: str) -> str | None:
     """Return error message if Celery task failed, else None."""
     with contextlib.suppress(Exception):
         task = celery_app.AsyncResult(task_id)
-        if task.state == "FAILURE":
+        if task.failed():
             return str(task.info)
     return None

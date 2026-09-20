@@ -1,24 +1,57 @@
 """Video management endpoints: listing, metadata, streaming, and deletion."""
 
 import contextlib
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
 
+import anyio
 from fastapi import APIRouter, HTTPException, Request
 
-from doubtless.api.upload_manager import stream_to_file
 from doubtless.config import ALLOWED_EXTENSIONS, MAX_UPLOAD_BYTES
 from doubtless.domain.schemas import (
     UploadAcceptedResponse,
     UploadConfigResponse,
     VideoDeleteResponse,
     VideoItemResponse,
+    VideoRecord,
     VideoStatusResponse,
 )
 from doubtless.storage import db, file_storage, redis_store
+from doubtless.storage.redis_store import VideoProgressData
+from doubtless.storage.vector_store import delete_lecture_vectors
 from doubtless.worker.celery_app import celery_app, get_task_error
 from doubtless.worker.tasks import transcode_video
 
 router = APIRouter(prefix="/videos", tags=["videos"])
+
+
+def _record_to_item_response(
+    rec: VideoRecord,
+    prog_data: VideoProgressData | None = None,
+) -> VideoItemResponse:
+    """Map a VideoRecord domain entity to a public VideoItemResponse schema."""
+    progress = 1.0 if rec.status == "ready" else 0.0
+    stage: str | None = None
+    stage_message: str | None = None
+
+    if prog_data is not None:
+        progress = prog_data["progress"]
+        stage = prog_data["stage"]
+        stage_message = prog_data["message"]
+
+    return VideoItemResponse(
+        id=rec.id,
+        title=rec.title,
+        filename=rec.filename,
+        task_id=rec.task_id,
+        playlist=rec.playlist,
+        poster=rec.poster,
+        status=rec.status,
+        progress=progress,
+        stage=stage,
+        stage_message=stage_message,
+        error=rec.error,
+        created_at=rec.created_at,
+    )
 
 
 @router.get("", response_model=list[VideoItemResponse])
@@ -31,10 +64,13 @@ def list_all_videos() -> list[VideoItemResponse]:
         if processing_ids
         else {}
     )
-    for v in videos:
-        if v.status == "processing":
-            v.progress = progress_map.get(v.id, 0.0)
-    return videos
+    return [
+        _record_to_item_response(
+            v,
+            progress_map.get(v.id) if v.status == "processing" else None,
+        )
+        for v in videos
+    ]
 
 
 @router.get("/config", response_model=UploadConfigResponse)
@@ -66,39 +102,30 @@ def get_video_status(video_id: str) -> VideoStatusResponse:
             error=v.error or "Transcoding failed. Please check the video format.",
         )
 
-    # 2. Check filesystem HLS readiness
-    if file_storage.is_playlist_ready(target_id):
-        playlist_url = file_storage.playlist_url(target_id)
-        if v.status != "ready":
-            db.update_video(
-                target_id,
-                status="ready",
-                playlist=playlist_url,
-                poster=file_storage.poster_url(target_id),
-            )
+    if v.status == "ready":
         return VideoStatusResponse(
             state="ready",
             progress=1.0,
             id=target_id,
-            playlist=v.playlist or playlist_url,
+            playlist=v.playlist or file_storage.playlist_url(target_id),
         )
 
     # 3. Check Celery task if unexpectedly failed
-    if v.task_id:
-        err_msg = get_task_error(v.task_id)
-        if err_msg:
-            db.update_video(target_id, status="error", error=err_msg)
-            return VideoStatusResponse(
-                state="error",
-                progress=0.0,
-                id=target_id,
-                error=err_msg,
-            )
+    if v.task_id and (err_msg := get_task_error(v.task_id)):
+        db.update_video(target_id, status="error", error=err_msg)
+        return VideoStatusResponse(
+            state="error",
+            progress=0.0,
+            id=target_id,
+            error=err_msg,
+        )
 
-    current_progress = redis_store.get_transcode_progress(target_id)
+    prog_data = redis_store.get_transcode_progress(target_id)
     return VideoStatusResponse(
         state="processing",
-        progress=current_progress,
+        progress=prog_data["progress"],
+        stage=prog_data["stage"],
+        stage_message=prog_data["message"],
         id=target_id,
     )
 
@@ -112,9 +139,45 @@ def get_video_by_id(video_id: str) -> VideoItemResponse:
             status_code=404,
             detail=f"Video '{video_id}' not found",
         )
-    if v.status == "processing":
-        v.progress = redis_store.get_transcode_progress(video_id)
-    return v
+    prog_data = (
+        redis_store.get_transcode_progress(video_id)
+        if v.status == "processing"
+        else None
+    )
+    return _record_to_item_response(v, prog_data)
+
+
+async def _stream_to_file(
+    request: Request,
+    destination: Path,
+    video_id: str,
+    max_bytes: int = MAX_UPLOAD_BYTES,
+) -> None:
+    """Stream request body chunks directly to disk with O(1) memory usage."""
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    received = 0
+    try:
+        with destination.open("wb") as f:
+            async for chunk in request.stream():
+                if not chunk:
+                    continue
+
+                if redis_store.is_cancelled(video_id):
+                    raise HTTPException(
+                        status_code=409,
+                        detail="Upload cancelled",
+                    )
+
+                await anyio.to_thread.run_sync(f.write, chunk)
+                received += len(chunk)
+                if received > max_bytes:
+                    raise HTTPException(
+                        status_code=413,
+                        detail=f"Uploaded file exceeds limit of {max_bytes} bytes",
+                    )
+    except BaseException:
+        destination.unlink(missing_ok=True)
+        raise
 
 
 @router.put("/upload", response_model=UploadAcceptedResponse)
@@ -153,7 +216,7 @@ async def upload_video(
     dest_path = file_storage.source_path(video_id, ext)
 
     try:
-        await stream_to_file(
+        await _stream_to_file(
             request,
             dest_path,
             video_id,
@@ -197,6 +260,7 @@ def delete_video_by_id(video_id: str) -> VideoDeleteResponse:
 
     redis_store.set_cancellation(video_id)
     redis_store.delete_transcode_progress(video_id)
+    delete_lecture_vectors(video_id)
     file_storage.delete_video_files(video_id)
     db.delete_video(video_id)
     return VideoDeleteResponse(id=video_id)

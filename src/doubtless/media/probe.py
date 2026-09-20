@@ -86,3 +86,11 @@ def probe_video(src: Path) -> MediaProbe:
         acodec=audio.get("codec_name") if audio else None,
         pix_fmt=video.get("pix_fmt"),
     )
+
+
+def has_audio_stream(src: Path) -> bool:
+    """Return True if media file contains at least one valid audio stream."""
+    try:
+        return probe_video(src).acodec is not None
+    except Exception:
+        return False

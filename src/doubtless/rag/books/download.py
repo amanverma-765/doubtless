@@ -3,11 +3,22 @@
 import subprocess
 import sys
 from pathlib import Path
+from typing import NamedTuple
 
 from doubtless.config import BOOKS_DIR
-from doubtless.rag.models import Book
 
-__all__ = ["BOOKS", "BOOKS_DIR", "BY_FOLDER", "download_books"]
+__all__ = ["BOOKS", "BOOKS_DIR", "BY_FOLDER", "Book", "download_books"]
+
+
+class Book(NamedTuple):
+    """One NCERT textbook as pinned in the corpus."""
+
+    code: str  # ncert_cli's download id
+    grade: int
+    subject: str
+    folder: str  # directory ncert_cli writes under BOOKS_DIR
+    offset: int = 0  # chapters in the preceding part; 0 for single-part books
+
 
 BOOKS = (
     Book(
@@ -127,8 +138,6 @@ def download_books(outdir: Path = BOOKS_DIR) -> list[Path]:
     """
     outdir.mkdir(parents=True, exist_ok=True)
     cached = all((outdir / book.folder).is_dir() for book in BOOKS)
-    # Prelims are the cover and contents: no prose to retrieve, and their page
-    # numbering does not line up with the chapters'.
     done = subprocess.run(
         [
             sys.executable,

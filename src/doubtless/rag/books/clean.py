@@ -3,33 +3,15 @@
 import re
 from collections import Counter
 
-# Match headings set with letter tracking (e.g., "I N T R O D U C T I O N").
-# Requires a minimum of four letters so ordinary prose ("I a m") is ignored.
 _TRACKED = re.compile(r"\b(?:[A-Z] ){3,}[A-Z]\b")
-
-# Match words hyphenated across a line break (e.g., "photo-\nsynthesis").
-# Matches only when the next line starts with a lowercase letter, preserving
-# capitalized compounds like "well-\nKnown".
 _HYPHEN_BREAK = re.compile(r"(\w)-\n([a-z])")
-
-# Match drop caps, which often extract as a lone capital letter on its own line
-# preceding the rest of the word.
 _DROP_CAP = re.compile(r"^([A-Z])\n(?=[a-z])", re.MULTILINE)
-
-# Match pseudo-bold text created by overprinting a line 3-5 times.
-# Duplicates (exactly 2) are kept as they may be table columns or repeated variables.
 _OVERPRINT = re.compile(r"^(.+)$(?:\n\1$){2,}", re.MULTILINE)
-
-# Match standard page number formats.
 _PAGE_NUMBER = re.compile(r"^\s*\d{1,4}\s*$")
-
-# Define the margin (number of lines at the top or bottom) where a page number
-# is expected. A lone number mid-page is treated as content (e.g., a table cell).
+_SPACES = re.compile(r"[ \t]+")
+_MULTI_NEWLINE = re.compile(r"\n{3,}")
 _PAGE_EDGE = 2
 
-# Map private-use codepoints used by some fonts in NCERT PDFs.
-# 0xF000 is added to the byte the font drew. For the Symbol font, that byte
-# is the Adobe Symbol encoding. For others, it is cp1252.
 _SYMBOL_GLYPHS: dict[int, str | None] = {
     0x22: "∀", 0x24: "∃", 0x27: "∍", 0x2A: "∗", 0x2D: "−", 0x40: "≅",
     0x5C: "∴", 0x5E: "⊥", 0x60: None, 0x7E: "∼",
@@ -48,8 +30,6 @@ _SYMBOL_GLYPHS: dict[int, str | None] = {
     0xE0: "◊", 0xE1: "〈", 0xE5: "∑", 0xF1: "〉", 0xF2: "∫",
 }  # fmt: skip
 
-# Drop the entire private-use area, then selectively map back readable codes.
-# Unmapped glyph ids are dropped rather than embedded as junk characters.
 _DROP: dict[int, str | None] = dict.fromkeys(range(0xE000, 0xF900))
 
 _SYMBOL = _DROP | {
@@ -80,24 +60,14 @@ def clean_text(text: str) -> str:
     text = text.replace("\xa0", " ")
     text = _HYPHEN_BREAK.sub(r"\1\2", text)
     text = _DROP_CAP.sub(r"\1", text)
-    text = _TRACKED.sub(lambda m: m.group().replace(" ", ""), text)
-
-    # Retain newlines: strip_running_heads relies on line-by-line matching.
-    text = re.sub(r"[ \t]+", " ", text)
-
-    # Remove overprinted lines after space collapse ensures exact matches.
+    text = _TRACKED.sub(lambda m: m[0].replace(" ", ""), text)
+    text = _SPACES.sub(" ", text)
     text = _OVERPRINT.sub(r"\1", text)
-
-    return re.sub(r"\n{3,}", "\n\n", text).strip()
+    return _MULTI_NEWLINE.sub("\n\n", text).strip()
 
 
 def strip_running_heads(pages: list[str], threshold: float = 0.4) -> list[str]:
-    """
-    Remove recurring headers, footers, and page numbers across a chapter.
-
-    Lines that repeat on a high percentage of pages (default 40%+)
-    are treated as document furniture and stripped.
-    """
+    """Remove recurring headers, footers, and page numbers across a chapter."""
     if len(pages) < 3:
         return pages
 

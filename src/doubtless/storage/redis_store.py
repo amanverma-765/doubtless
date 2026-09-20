@@ -1,22 +1,35 @@
 """Centralized Redis storage for ephemeral progress and uploads."""
 
 import contextlib
+import json
+from typing import TypedDict
 
 import redis
 
 from doubtless.config import REDIS_URL
 
-_redis_pool: redis.ConnectionPool | None = None
+
+class VideoProgressData(TypedDict):
+    """Structured progress payload for video processing stages."""
+
+    progress: float
+    stage: str
+    message: str
+
+
 _redis_client: redis.Redis | None = None
 
 
 def _get_client() -> redis.Redis:
     """Return a thread-safe Redis client from the shared connection pool."""
-    global _redis_pool, _redis_client
+    global _redis_client
     if _redis_client is None:
-        if _redis_pool is None:
-            _redis_pool = redis.ConnectionPool.from_url(REDIS_URL, socket_timeout=2.0)
-        _redis_client = redis.Redis(connection_pool=_redis_pool)
+        _redis_client = redis.from_url(
+            REDIS_URL,
+            socket_timeout=2.0,
+            decode_responses=True,
+            health_check_interval=30,
+        )
     return _redis_client
 
 
@@ -29,44 +42,65 @@ def ping_redis() -> bool:
 
 
 # ----------------------------------------------------------------------
-# Transcoding Progress (Ephemeral 0.0 - 1.0)
+# Transcoding Progress (Ephemeral 0.0 - 1.0 & Per-Stage)
 # ----------------------------------------------------------------------
 
 
-def set_transcode_progress(video_id: str, progress: float, ttl: int = 3600) -> None:
-    """Record volatile transcoding progress float (0.0 to 1.0) with TTL."""
+def set_transcode_progress(
+    video_id: str,
+    progress: float,
+    stage: str = "transcoding",
+    message: str = "",
+    ttl: int = 3600,
+) -> None:
+    """Record volatile per-stage progress float (0.0 to 1.0) with TTL."""
     with contextlib.suppress(Exception):
         clamped = min(1.0, max(0.0, progress))
-        _get_client().set(f"transcode:prog:{video_id}", str(clamped), ex=ttl)
+        payload = json.dumps(
+            {
+                "progress": clamped,
+                "stage": stage,
+                "message": message,
+            }
+        )
+        _get_client().set(f"transcode:prog:{video_id}", payload, ex=ttl)
 
 
-def get_transcode_progress(video_id: str) -> float:
-    """Retrieve current transcoding progress float or 0.0 if not found."""
-    try:
-        raw = _get_client().get(f"transcode:prog:{video_id}")
-        if raw is not None:
-            val = float(raw.decode("utf-8") if isinstance(raw, bytes) else raw)
-            return min(1.0, max(0.0, val))
-    except Exception:
-        pass
-    return 0.0
+def get_transcode_progress(video_id: str) -> VideoProgressData:
+    """Retrieve current processing progress and stage or defaults."""
+    default_res: VideoProgressData = {
+        "progress": 0.0,
+        "stage": "transcoding",
+        "message": "",
+    }
+    return get_transcode_progress_batch([video_id]).get(video_id, default_res)
 
 
-def get_transcode_progress_batch(video_ids: list[str]) -> dict[str, float]:
-    """Retrieve transcoding progress for multiple videos in a single mget roundtrip."""
+def get_transcode_progress_batch(
+    video_ids: list[str],
+) -> dict[str, VideoProgressData]:
+    """Retrieve progress and stage for multiple videos in a single mget roundtrip."""
     if not video_ids:
         return {}
-    results: dict[str, float] = {vid: 0.0 for vid in video_ids}
+    results: dict[str, VideoProgressData] = {
+        vid: {"progress": 0.0, "stage": "transcoding", "message": ""}
+        for vid in video_ids
+    }
     try:
         keys = [f"transcode:prog:{vid}" for vid in video_ids]
         raw_vals = _get_client().mget(keys)
         for vid, raw in zip(video_ids, raw_vals, strict=False):
-            if raw is not None:
-                try:
-                    val = float(raw.decode("utf-8") if isinstance(raw, bytes) else raw)
-                    results[vid] = min(1.0, max(0.0, val))
-                except ValueError, TypeError:
-                    results[vid] = 0.0
+            if raw:
+                with contextlib.suppress(Exception):
+                    parsed = json.loads(str(raw))
+                    if isinstance(parsed, dict):
+                        results[vid] = {
+                            "progress": min(
+                                1.0, max(0.0, float(parsed.get("progress", 0.0)))
+                            ),
+                            "stage": str(parsed.get("stage", "transcoding")),
+                            "message": str(parsed.get("message", "")),
+                        }
     except Exception:
         pass
     return results

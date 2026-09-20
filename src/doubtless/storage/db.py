@@ -1,5 +1,4 @@
-"""Lightweight SQLite database engine using Python's standard library with WAL mode."""
-
+import json
 import sqlite3
 from collections.abc import Generator
 from contextlib import contextmanager
@@ -8,10 +7,16 @@ from pathlib import Path
 from typing import Any
 
 from doubtless.config import DATA_DIR
+from doubtless.core.formatting import format_timestamp as format_timestamp
 from doubtless.domain.schemas import (
     ChatMessage,
+    Flashcard,
     MessageRole,
-    VideoItemResponse,
+    QuizQuestion,
+    TranscriptSegment,
+    VideoChapter,
+    VideoNotes,
+    VideoRecord,
     VideoStatusState,
 )
 
@@ -46,14 +51,71 @@ def _ensure_tables(conn: sqlite3.Connection) -> None:
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
         """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS lecture_transcripts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                video_id TEXT NOT NULL,
+                start_time REAL NOT NULL,
+                end_time REAL NOT NULL,
+                text TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+        conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_transcripts_time
+            ON lecture_transcripts (video_id, start_time, end_time);
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS video_chapters (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                video_id TEXT NOT NULL,
+                start_time REAL NOT NULL,
+                end_time REAL NOT NULL,
+                title TEXT NOT NULL,
+                description TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(video_id) REFERENCES videos(id) ON DELETE CASCADE
+            );
+        """)
+        conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_chapters_video
+            ON video_chapters (video_id, start_time);
+        """)
+
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS video_notes (
+                video_id TEXT PRIMARY KEY,
+                title TEXT,
+                markdown TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(video_id) REFERENCES videos(id) ON DELETE CASCADE
+            );
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS video_quizzes (
+                video_id TEXT PRIMARY KEY,
+                json_data TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(video_id) REFERENCES videos(id) ON DELETE CASCADE
+            );
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS video_flashcards (
+                video_id TEXT PRIMARY KEY,
+                json_data TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(video_id) REFERENCES videos(id) ON DELETE CASCADE
+            );
+        """)
         _tables_initialized = True
 
 
 @contextmanager
 def _get_db() -> Generator[sqlite3.Connection]:
     """Context manager providing a transactional SQLite connection."""
-    conn = sqlite3.connect(_DB_PATH)
+    conn = sqlite3.connect(_DB_PATH, timeout=30.0)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON;")
     _ensure_tables(conn)
     try:
         yield conn
@@ -65,12 +127,11 @@ def _get_db() -> Generator[sqlite3.Connection]:
         conn.close()
 
 
-def _row_to_video(row: sqlite3.Row) -> VideoItemResponse:
-    """Convert an SQLite row into a validated VideoItemResponse schema."""
+def _row_to_video_record(row: sqlite3.Row) -> VideoRecord:
+    """Convert an SQLite row into a validated VideoRecord domain entity."""
     data = dict(row)
-    data["progress"] = 1.0 if data["status"] == "ready" else 0.0
     data["created_at"] = data["created_at"] or ""
-    return VideoItemResponse.model_validate(data)
+    return VideoRecord.model_validate(data)
 
 
 def _row_to_message(row: sqlite3.Row) -> ChatMessage:
@@ -86,7 +147,7 @@ def create_video(
     filename: str,
     task_id: str | None = None,
     status: VideoStatusState = "uploading",
-) -> VideoItemResponse:
+) -> VideoRecord:
     """Register a new video record with initial status ('uploading' by default)."""
     now = datetime.now(UTC).isoformat()
     with _get_db() as conn:
@@ -99,29 +160,28 @@ def create_video(
             """,
             (video_id, title, filename, task_id, status, now),
         )
-    return VideoItemResponse(
+    return VideoRecord(
         id=video_id,
         title=title,
         filename=filename,
         task_id=task_id,
         status=status,
-        progress=0.0,
         created_at=now,
     )
 
 
-def get_video(video_id: str) -> VideoItemResponse | None:
+def get_video(video_id: str) -> VideoRecord | None:
     """Retrieve a video by unique ID."""
     with _get_db() as conn:
         row = conn.execute("SELECT * FROM videos WHERE id = ?", (video_id,)).fetchone()
-        return _row_to_video(row) if row else None
+        return _row_to_video_record(row) if row else None
 
 
-def list_videos() -> list[VideoItemResponse]:
+def list_videos() -> list[VideoRecord]:
     """List all video records ordered by creation time descending."""
     with _get_db() as conn:
         rows = conn.execute("SELECT * FROM videos ORDER BY created_at DESC").fetchall()
-        return [_row_to_video(row) for row in rows]
+        return [_row_to_video_record(row) for row in rows]
 
 
 def update_video(
@@ -161,11 +221,193 @@ def update_video(
 
 
 def delete_video(video_id: str) -> bool:
-    """Delete a video and its associated message history."""
+    """Delete a video, its message history, and all generated study artifacts."""
     with _get_db() as conn:
         cursor = conn.execute("DELETE FROM videos WHERE id = ?", (video_id,))
         conn.execute("DELETE FROM messages WHERE video_id = ?", (video_id,))
+        conn.execute("DELETE FROM lecture_transcripts WHERE video_id = ?", (video_id,))
+        conn.execute("DELETE FROM video_chapters WHERE video_id = ?", (video_id,))
+        conn.execute("DELETE FROM video_notes WHERE video_id = ?", (video_id,))
+        conn.execute("DELETE FROM video_quizzes WHERE video_id = ?", (video_id,))
+        conn.execute("DELETE FROM video_flashcards WHERE video_id = ?", (video_id,))
         return cursor.rowcount > 0
+
+
+def save_chapters(video_id: str, chapters: list[VideoChapter]) -> None:
+    """Persist generated chapter markers for a video."""
+    with _get_db() as conn:
+        conn.execute("DELETE FROM video_chapters WHERE video_id = ?", (video_id,))
+        rows = [
+            (video_id, c.start_time, c.end_time, c.title, c.description)
+            for c in chapters
+        ]
+        conn.executemany(
+            """
+            INSERT INTO video_chapters (
+                video_id, start_time, end_time, title, description
+            )
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            rows,
+        )
+
+
+def get_chapters(video_id: str) -> list[VideoChapter]:
+    """Retrieve chronological chapters for a video."""
+    with _get_db() as conn:
+        rows = conn.execute(
+            """
+            SELECT start_time, end_time, title, description
+            FROM video_chapters
+            WHERE video_id = ?
+            ORDER BY start_time ASC
+            """,
+            (video_id,),
+        ).fetchall()
+        return [
+            VideoChapter(
+                start_time=float(r["start_time"]),
+                end_time=float(r["end_time"]),
+                title=str(r["title"]),
+                description=str(r["description"]),
+            )
+            for r in rows
+        ]
+
+
+def save_video_notes(notes: VideoNotes) -> None:
+    """Persist structured markdown lecture study notes."""
+    with _get_db() as conn:
+        conn.execute(
+            """
+            INSERT OR REPLACE INTO video_notes (
+                video_id, title, markdown
+            )
+            VALUES (?, ?, ?)
+            """,
+            (notes.video_id, notes.title, notes.markdown),
+        )
+
+
+def get_video_notes(video_id: str) -> VideoNotes | None:
+    """Retrieve markdown study notes for a video."""
+    with _get_db() as conn:
+        row = conn.execute(
+            "SELECT video_id, title, markdown FROM video_notes WHERE video_id = ?",
+            (video_id,),
+        ).fetchone()
+        if not row:
+            return None
+
+        return VideoNotes(
+            video_id=str(row["video_id"]),
+            title=row["title"],
+            markdown=str(row["markdown"]),
+        )
+
+
+def save_video_quiz(video_id: str, questions: list[QuizQuestion]) -> None:
+    """Persist structured multiple-choice quiz questions for a video."""
+    data = json.dumps([q.model_dump() for q in questions])
+    with _get_db() as conn:
+        conn.execute(
+            """
+            INSERT OR REPLACE INTO video_quizzes (video_id, json_data)
+            VALUES (?, ?)
+            """,
+            (video_id, data),
+        )
+
+
+def get_video_quiz(video_id: str) -> list[QuizQuestion]:
+    """Retrieve quiz questions for a video."""
+    with _get_db() as conn:
+        row = conn.execute(
+            "SELECT json_data FROM video_quizzes WHERE video_id = ?",
+            (video_id,),
+        ).fetchone()
+        if not row:
+            return []
+        try:
+            items = json.loads(row["json_data"])
+            return [QuizQuestion.model_validate(q) for q in items]
+        except Exception:
+            return []
+
+
+def save_video_flashcards(video_id: str, cards: list[Flashcard]) -> None:
+    """Persist structured revision flashcards for a video."""
+    data = json.dumps([c.model_dump() for c in cards])
+    with _get_db() as conn:
+        conn.execute(
+            """
+            INSERT OR REPLACE INTO video_flashcards (video_id, json_data)
+            VALUES (?, ?)
+            """,
+            (video_id, data),
+        )
+
+
+def get_video_flashcards(video_id: str) -> list[Flashcard]:
+    """Retrieve flashcards for a video."""
+    with _get_db() as conn:
+        row = conn.execute(
+            "SELECT json_data FROM video_flashcards WHERE video_id = ?",
+            (video_id,),
+        ).fetchone()
+        if not row:
+            return []
+        try:
+            items = json.loads(row["json_data"])
+            return [Flashcard.model_validate(c) for c in items]
+        except Exception:
+            return []
+
+
+def insert_transcripts(video_id: str, segments: list[TranscriptSegment]) -> None:
+    """Batch insert timestamped transcription segments for a video."""
+    if not segments:
+        return
+    rows = [(video_id, seg.start, seg.end, seg.text) for seg in segments]
+    with _get_db() as conn:
+        conn.executemany(
+            """
+            INSERT INTO lecture_transcripts (video_id, start_time, end_time, text)
+            VALUES (?, ?, ?, ?)
+            """,
+            rows,
+        )
+
+
+def get_transcript_dialogue_window(
+    video_id: str,
+    current_time: float,
+    window_before: float = 90.0,
+    window_after: float = 15.0,
+) -> str:
+    """Retrieve chronological spoken dialogue around the specified timestamp."""
+    start_bound = max(0.0, current_time - window_before)
+    end_bound = current_time + window_after
+
+    with _get_db() as conn:
+        rows = conn.execute(
+            """
+            SELECT start_time, text FROM lecture_transcripts
+            WHERE video_id = ? AND end_time >= ? AND start_time <= ?
+            ORDER BY start_time ASC
+            """,
+            (video_id, start_bound, end_bound),
+        ).fetchall()
+
+    if not rows:
+        return ""
+
+    lines: list[str] = []
+    for r in rows:
+        ts_str = format_timestamp(float(r["start_time"]))
+        lines.append(f"[{ts_str}] {r['text']}")
+
+    return "\n".join(lines)
 
 
 def add_message(
@@ -186,16 +428,27 @@ def add_message(
     return ChatMessage(role=role, content=content, created_at=now)
 
 
-def get_messages(video_id: str) -> list[ChatMessage]:
-    """Fetch all chat messages for a specific video in chronological order."""
+def get_messages(video_id: str, limit: int | None = None) -> list[ChatMessage]:
+    """Fetch chat messages for a specific video in chronological order."""
     with _get_db() as conn:
-        rows = conn.execute(
-            """
-            SELECT role, content, created_at FROM messages
-            WHERE video_id = ? ORDER BY id ASC
-            """,
-            (video_id,),
-        ).fetchall()
+        if limit is not None:
+            rows = conn.execute(
+                """
+                SELECT role, content, created_at FROM (
+                    SELECT id, role, content, created_at FROM messages
+                    WHERE video_id = ? ORDER BY id DESC LIMIT ?
+                ) ORDER BY id ASC
+                """,
+                (video_id, limit),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                """
+                SELECT role, content, created_at FROM messages
+                WHERE video_id = ? ORDER BY id ASC
+                """,
+                (video_id,),
+            ).fetchall()
         return [_row_to_message(row) for row in rows]
 
 

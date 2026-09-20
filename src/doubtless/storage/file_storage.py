@@ -40,16 +40,6 @@ def poster_url(video_id: str) -> str | None:
     return None
 
 
-def is_playlist_ready(video_id: str) -> bool:
-    """Return True if the HLS playlist exists and is complete (#EXT-X-ENDLIST)."""
-    p = hls_dir(video_id) / "index.m3u8"
-    try:
-        content = p.read_text(encoding="utf-8", errors="ignore")
-        return p.is_file() and "#EXT-X-ENDLIST" in content
-    except Exception:
-        return False
-
-
 def ensure_dirs() -> None:
     """Ensure all required root directories exist on the filesystem."""
     DATA_DIR.mkdir(parents=True, exist_ok=True)

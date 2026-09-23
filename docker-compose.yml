@@ -44,14 +44,13 @@ services:
     volumes:
       - ./data:/app/data
       - huggingface_cache:/root/.cache/huggingface
-    # Uncomment below for NVIDIA GPU acceleration (requires nvidia-container-toolkit):
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           count: all
-    #           capabilities: [gpu]
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
     depends_on:
       redis:
         condition: service_healthy

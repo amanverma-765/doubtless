@@ -27,26 +27,26 @@ export const TopBar: React.FC<TopBarProps> = ({
   };
 
   return (
-    <header className="h-[64px] min-h-[64px] w-full bg-white border-b border-[#e2e0da] px-[var(--side)] flex items-center justify-between z-10">
+    <header className="h-[64px] min-h-[64px] w-full bg-white border-b border-[#e5e2db] px-[var(--side)] flex items-center justify-between z-10 select-none">
       <div className="flex items-center gap-4">
         {showBack && (
           <Link
             to="/"
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-[#1f1f1f] bg-[#f0eee9] hover:bg-[#e4e1d8] rounded-full transition-colors cursor-pointer"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-zinc-800 bg-[#f4f2ee] hover:bg-[#eae7df] border border-[#e3e0d8] rounded-full transition-colors cursor-pointer shadow-2xs"
           >
-            <ChevronLeft className="w-4 h-4" />
+            <ChevronLeft className="w-3.5 h-3.5" />
             <span>Library</span>
           </Link>
         )}
 
         <Link
           to="/"
-          className="flex flex-col justify-center hover:opacity-85 transition-opacity"
+          className="flex flex-col justify-center hover:opacity-90 transition-opacity"
         >
-          <h1 className="font-serif italic text-2xl leading-none text-[#1f1f1f] m-0">
+          <h1 className="font-serif italic text-[26px] tracking-tight leading-none text-zinc-900 m-0">
             doubtless
           </h1>
-          <p className="text-[9.5px] uppercase tracking-[0.15em] text-[#6b6b6b] mt-1 font-medium truncate max-w-xs">
+          <p className="text-[10px] uppercase tracking-[0.14em] text-zinc-500 mt-1 font-medium truncate max-w-xs">
             {activeTitle ? activeTitle : "Video Streaming & Doubt Solver"}
           </p>
         </Link>
@@ -54,13 +54,19 @@ export const TopBar: React.FC<TopBarProps> = ({
 
       <div className="flex items-center gap-3">
         {status?.state === "processing" && (
-          <span className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200">
+          <span className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-amber-50 text-amber-800 border border-amber-200/90 shadow-2xs">
             <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
-            Transcoding {Math.round((status.progress || 0) * 100)}%
+            {status.stage === "transcribing"
+              ? `Transcribing ${Math.round((status.progress || 0) * 100)}%`
+              : status.stage === "indexing"
+              ? `Indexing ${Math.round((status.progress || 0) * 100)}%`
+              : status.stage === "generating_notes"
+              ? `Notes & Chapters ${Math.round((status.progress || 0) * 100)}%`
+              : `Transcoding ${Math.round((status.progress || 0) * 100)}%`}
           </span>
         )}
         {status?.state === "uploading" && (
-          <span className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-indigo-50 text-indigo-700 border border-indigo-200">
+          <span className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-indigo-50 text-indigo-700 border border-indigo-200 shadow-2xs">
             <span className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse" />
             Uploading {Math.round((status.progress || 0) * 100)}%
           </span>
@@ -77,9 +83,9 @@ export const TopBar: React.FC<TopBarProps> = ({
         <button
           type="button"
           onClick={() => fileInputRef.current?.click()}
-          className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-[#1f1f1f] bg-white border border-[#d1cec7] rounded-full hover:bg-[#f5f4f0] hover:border-[#1f1f1f] transition-colors focus:outline-none focus:ring-2 focus:ring-[#4f46e5] focus:ring-offset-2 cursor-pointer shadow-xs"
+          className="inline-flex items-center gap-2 px-3.5 py-1.5 text-xs font-semibold text-zinc-800 bg-white border border-[#d5d1c7] rounded-full hover:bg-[#f4f2ee] hover:border-zinc-900 transition-all focus:outline-none focus:ring-2 focus:ring-indigo-500/20 cursor-pointer shadow-2xs active:scale-95"
         >
-          <Upload className="w-4 h-4 text-[#4f46e5]" />
+          <Upload className="w-3.5 h-3.5 text-indigo-600" />
           <span>Upload video</span>
         </button>
       </div>

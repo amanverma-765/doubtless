@@ -60,7 +60,7 @@ export const FeatureCards: React.FC<FeatureCardsProps> = ({
   return (
     <nav
       aria-label="Workspace feature navigation"
-      className="w-full bg-[#f4f2ee] p-1 rounded-2xl border border-[#e3e0d8] flex items-center gap-1.5 shadow-xs overflow-x-auto"
+      className="w-full bg-[#f4f2ee] p-1.5 rounded-2xl border border-[#e3e0d8] flex items-center gap-1.5 shadow-2xs overflow-x-auto thin-scrollbar select-none"
     >
       {CARDS.map((card) => {
         const isSelected = activeTab === card.key;
@@ -72,15 +72,15 @@ export const FeatureCards: React.FC<FeatureCardsProps> = ({
             type="button"
             onClick={() => onSelectTab(card.key)}
             title={card.description}
-            className={`flex-1 min-w-[110px] sm:min-w-0 h-12 px-3.5 rounded-xl flex items-center justify-center gap-2.5 transition-all duration-150 select-none cursor-pointer text-[13.5px] font-medium ${
+            className={`flex-1 min-w-[110px] sm:min-w-0 h-11 px-3.5 rounded-xl flex items-center justify-center gap-2.5 transition-all duration-150 select-none cursor-pointer text-[13px] ${
               isSelected
-                ? "bg-[#1f1f1f] text-white shadow-xs font-semibold"
-                : "bg-transparent text-[#555] hover:text-[#1f1f1f] hover:bg-white/70 active:bg-white"
+                ? "bg-zinc-900 text-white shadow-xs font-semibold"
+                : "bg-transparent text-zinc-600 hover:text-zinc-900 hover:bg-white/80 active:bg-white font-medium"
             }`}
           >
             <IconComponent
-              className={`w-[18px] h-[18px] shrink-0 transition-colors ${
-                isSelected ? "text-white" : "text-[#71717a]"
+              className={`w-4 h-4 shrink-0 transition-colors ${
+                isSelected ? "text-white" : "text-zinc-500"
               }`}
             />
             <span className="truncate tracking-tight">{card.title}</span>

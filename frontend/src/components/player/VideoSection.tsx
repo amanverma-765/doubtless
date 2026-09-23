@@ -3,6 +3,7 @@ import { useRef, useState } from "react";
 import { Upload as UploadIcon, AlertCircle, RefreshCw } from "lucide-react";
 import type { VideoStatus } from "@/types/video";
 import { API_BASE } from "@/constants/config";
+import type { MediaPlayerInstance } from "@vidstack/react";
 import { VideoPlayer } from "./VideoPlayer";
 
 interface VideoSectionProps {
@@ -10,6 +11,8 @@ interface VideoSectionProps {
   localUploadProgress: number | null;
   onFileSelect: (file: File) => void;
   videoTitle?: string;
+  playerRef?: React.RefObject<MediaPlayerInstance | null>;
+  onTimeUpdate?: (time: number) => void;
 }
 
 export const VideoSection: React.FC<VideoSectionProps> = ({
@@ -17,6 +20,8 @@ export const VideoSection: React.FC<VideoSectionProps> = ({
   localUploadProgress,
   onFileSelect,
   videoTitle,
+  playerRef,
+  onTimeUpdate,
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDragOver, setIsDragOver] = useState(false);
@@ -70,8 +75,8 @@ export const VideoSection: React.FC<VideoSectionProps> = ({
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
-      className={`relative w-full aspect-video max-w-[var(--vidw)] bg-[#1f1f1f] rounded-[10px] overflow-hidden flex items-center justify-center transition-all ${
-        isDragOver ? "ring-2 ring-[#4f46e5] ring-offset-2" : ""
+      className={`relative w-full aspect-video max-w-[var(--vidw)] bg-[#191919] rounded-2xl overflow-hidden flex items-center justify-center transition-all shadow-md ${
+        isDragOver ? "ring-2 ring-indigo-500 ring-offset-2" : ""
       }`}
     >
       <input
@@ -94,13 +99,13 @@ export const VideoSection: React.FC<VideoSectionProps> = ({
           onClick={() => fileInputRef.current?.click()}
           className="w-full h-full flex flex-col items-center justify-center gap-2 text-zinc-300 hover:text-white cursor-pointer group p-6 transition-colors"
         >
-          <div className="w-14 h-14 rounded-2xl border border-[#3a3a3a] bg-[#262626] flex items-center justify-center group-hover:border-[#4f46e5] group-hover:bg-[#2c2c2c] transition-all">
+          <div className="w-14 h-14 rounded-2xl border border-zinc-750 bg-zinc-850 flex items-center justify-center group-hover:border-indigo-500 group-hover:bg-zinc-800 transition-all shadow-md">
             <UploadIcon className="w-6 h-6 text-zinc-400 group-hover:text-white transition-colors" />
           </div>
-          <span className="text-sm font-medium text-zinc-100 mt-1">
+          <span className="text-sm font-semibold text-zinc-100 mt-1">
             Click to upload a video
           </span>
-          <span className="text-xs text-zinc-500">
+          <span className="text-xs text-zinc-400">
             or drop a file here · MP4, MKV, MOV, WebM
           </span>
         </button>
@@ -124,22 +129,38 @@ export const VideoSection: React.FC<VideoSectionProps> = ({
       {/* STATE 3: PROCESSING */}
       {currentState === "processing" && (
         <div className="flex flex-col items-center justify-center gap-3.5 w-full max-w-[320px] px-4">
-          <div className="w-9 h-9 rounded-full border-3 border-zinc-800 border-t-[#4f46e5] animate-spin-custom" />
           <div className="w-full h-1.5 rounded-full bg-zinc-800 overflow-hidden">
             <div
               className="h-full bg-[#4f46e5] rounded-full transition-all duration-300"
-              style={{ width: progress > 0 ? pctText : "20%" }}
+              style={{ width: progress > 0 ? pctText : "10%" }}
             />
           </div>
-          <span className="text-xs text-zinc-400 font-medium tracking-wide">
-            {progress > 0 ? `Transcoding ${pctText}` : "Preparing transcode…"}
+          <span className="text-xs text-zinc-300 font-medium tracking-wide text-center">
+            {status?.stage_message ||
+              (status?.stage === "transcribing"
+                ? `Transcribing Speech (GPU) ${pctText}`
+                : status?.stage === "indexing"
+                ? `Indexing Lecture Vectors ${pctText}`
+                : status?.stage === "generating_notes"
+                ? `Generating Chapters & Notes ${pctText}`
+                : `Transcoding Video (HLS) ${pctText}`)}
           </span>
         </div>
       )}
 
       {/* STATE 4: READY VIDEO PLAYER */}
       {currentState === "ready" && status?.playlist && (
-        <VideoPlayer playlistUrl={getPlaylistUrl()} title={videoTitle} />
+        <VideoPlayer
+          playlistUrl={getPlaylistUrl()}
+          title={videoTitle}
+          poster={
+            status?.id
+              ? `${API_BASE}/hls/${status.id}/poster.jpg`
+              : undefined
+          }
+          playerRef={playerRef}
+          onTimeUpdate={onTimeUpdate}
+        />
       )}
 
       {/* STATE 5: ERROR */}

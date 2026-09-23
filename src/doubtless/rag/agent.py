@@ -56,11 +56,30 @@ Citation Rules (Mandatory for Frontend Rendering):
   (e.g. [Class 11 | Physics Part 1 | Chapter 3 | Page 42]). Extract Class, Book,
   Chapter, and Page directly from retrieved book chunk metadata.
 
+Addressing Deictic Doubts ("yaha pe", "what is teacher saying here", current moment):
+- When a student asks "yaha pe kya bata rahe hai?", "sir kya bol rahe hai?", or asks
+  about the current paused moment without naming a topic, ALWAYS ground your answer
+  in the [CURRENT PLAYHEAD TIMESTAMP] and the provided [SPOKEN DIALOGUE].
+- If spoken dialogue is present, state clearly what the teacher is explaining.
+- If the status indicates no spoken dialogue around that timestamp (teacher is silent,
+  writing on board, or working through problems), be completely honest and concise:
+  State: "At [MM:SS], there is no audio dialogue recorded in the lecture.
+  What concept or problem from this screen would you like me to explain?"
+  Mention the current chapter topic for context, but NEVER invent explanations or
+  pretend dialogue from minutes ago is happening now.
+
 Anti-Hallucination and Refusal Protocol:
 - Every factual claim must be backed by the transcript or textbook sources.
+- When `search_lecture` returns a not_found status, state clearly that the topic
+  was not discussed in this video lecture, and do NOT fabricate timestamps.
+- When `search_books` returns a not_found status, state clearly that the concept
+  is not in the indexed NCERT textbooks, and do NOT invent book citations.
 - If information is absent from both the lecture transcript and NCERT textbooks,
   explicitly state that the topic is not covered in this lecture or NCERT books.
   Never invent facts, timestamps, or textbook citations.
+- NEVER mention internal system terminology to the student (do not say
+  "local dialogue", "transcript window", "database", or similar technical terms).
+- Never ask the student to send a screenshot or image (this assistant is text/audio).
 
 Language and Tone:
 - Students may ask in English, Hindi, or conversational Hinglish.
@@ -84,24 +103,12 @@ rag_agent = Agent[DoubtContext, str](
 
 @rag_agent.instructions
 def inject_playhead_context(ctx: RunContext[DoubtContext]) -> str | None:
-    """Dynamically inject local playhead dialogue window around playhead."""
-    if ctx.deps.current_time is None:
-        return None
-
-    dialogue = db.get_transcript_dialogue_window(
-        ctx.deps.video_id,
-        ctx.deps.current_time,
-        window_before=90.0,
-        window_after=15.0,
-    )
-    if not dialogue:
-        return None
-
-    ts_formatted = format_timestamp(ctx.deps.current_time)
+    """Dynamically reinforce grounding on playhead timestamp."""
+    current_time = ctx.deps.current_time if ctx.deps.current_time is not None else 0.0
+    ts_formatted = format_timestamp(current_time)
     return (
-        f"[CURRENT VIDEO TIMESTAMP]: {ts_formatted}\n"
-        f"[LOCAL PLAYHEAD DIALOGUE (~90s around pause point, not full video)]:\n"
-        f"{dialogue}"
+        f"Active lecture playhead is paused at [{ts_formatted}]. "
+        f"Ground immediate observations and teacher remarks around this moment."
     )
 
 
@@ -117,22 +124,48 @@ def get_chapter_notes(ctx: RunContext[DoubtContext]) -> VideoNotes | None:
 
 
 @rag_agent.tool
-def search_lecture(ctx: RunContext[DoubtContext], query: str) -> list[LectureChunk]:
+async def search_lecture(
+    ctx: RunContext[DoubtContext],
+    query: str,
+) -> list[LectureChunk] | dict[str, str]:
     """Search across this specific video lecture's full spoken transcript.
 
     Call this tool when the student asks about something the teacher said earlier
     or later outside the local playhead window, asks where or at what timestamp a
     topic was explained, or requests a specific derivation from the teacher.
     """
-    return _search_lecture_impl(ctx.deps.video_id, query, k=3)
+    results = await _search_lecture_impl(ctx.deps.video_id, query, k=3)
+    if not results:
+        return {
+            "status": "not_found",
+            "message": (
+                f"No spoken discussion found in this lecture for query '{query}'. "
+                "State clearly to the student that this topic is not covered in "
+                "this video lecture. Do not fabricate a timestamp."
+            ),
+        }
+    return results
 
 
 @rag_agent.tool
-def search_books(ctx: RunContext[DoubtContext], query: str) -> list[BookChunk]:
+async def search_books(
+    ctx: RunContext[DoubtContext],
+    query: str,
+) -> list[BookChunk] | dict[str, str]:
     """Search formal NCERT textbooks for official curriculum theory and formulas.
 
     Call this tool when the student needs official curriculum definitions,
     standard formulas, formal theorem statements, textbook derivations, standard
     notation and SI units, or NCERT exercise problems.
     """
-    return _search_books_impl(query, k=5)
+    results = await _search_books_impl(query, k=5)
+    if not results:
+        return {
+            "status": "not_found",
+            "message": (
+                f"No relevant NCERT textbook passages found for query '{query}'. "
+                "State clearly that this concept is not found in the indexed "
+                "NCERT textbooks. Do not fabricate textbook citations."
+            ),
+        }
+    return results

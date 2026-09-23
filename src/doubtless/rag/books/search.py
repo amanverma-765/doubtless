@@ -2,37 +2,69 @@
 
 from doubtless.domain.schemas import BookChunk
 from doubtless.rag.embeddings import embed_texts
+from doubtless.rag.query_expansion import expand_query
 from doubtless.storage.vector_store import get_books_collection
 
+_MAX_BOOK_DISTANCE = 1.15
 
-def search_books(query: str, k: int = 5) -> list[BookChunk]:
-    """Search the indexed NCERT textbooks and return the k most relevant passages.
 
-    Nearby chunks from the same chapter are skipped to return passages from
-    distinct parts of the document.
-    """
-    if not query or not query.strip():
+async def search_books(
+    query: str,
+    k: int = 5,
+    max_distance: float = _MAX_BOOK_DISTANCE,
+) -> list[BookChunk]:
+    """Search indexed NCERT textbooks with bilingual query expansion."""
+    clean_query = query.strip() if query else ""
+    if not clean_query:
         return []
 
-    vector = embed_texts([query], query=True)
+    # 1. Expand query into academic English and Hindi variations
+    queries = await expand_query(clean_query)
+    vectors = embed_texts(queries, query=True)
+
+    # 2. Batch vector search in ChromaDB
     hits = get_books_collection().query(
-        query_embeddings=vector,
+        query_embeddings=vectors,
         n_results=4 * k,
-        include=["documents", "metadatas"],
+        include=["documents", "metadatas", "distances"],
     )
-    docs, metas = hits.get("documents"), hits.get("metadatas")
-    if not docs or not docs[0] or not metas or not metas[0]:
-        return []
+
+    docs_batch = hits.get("documents") or []
+    metas_batch = hits.get("metadatas") or []
+    dists_batch = hits.get("distances") or []
+
+    # 3. Deduplicate across query variants (keep lowest distance per passage)
+    best_chunks: dict[tuple[int, str, int, int], tuple[BookChunk, float]] = {}
+
+    for docs, metas, dists in zip(docs_batch, metas_batch, dists_batch, strict=False):
+        for doc, meta, dist in zip(docs, metas, dists, strict=False):
+            d = float(dist)
+            if d > max_distance:
+                continue
+
+            grade = int(str(meta["grade"]))
+            book = str(meta["book"])
+            chapter = int(str(meta["chapter"]))
+            page = int(str(meta["page"]))
+            key = (grade, book, chapter, page)
+
+            if key not in best_chunks or d < best_chunks[key][1]:
+                best_chunks[key] = (
+                    BookChunk(
+                        grade=grade,
+                        book=book,
+                        chapter=chapter,
+                        page=page,
+                        text=str(doc),
+                    ),
+                    d,
+                )
+
+    # 4. Sort by relevance and filter adjacent chapter pages
+    sorted_items = sorted(best_chunks.values(), key=lambda item: item[1])
 
     kept: list[BookChunk] = []
-    for doc, meta in zip(docs[0], metas[0], strict=True):
-        chunk = BookChunk(
-            grade=int(str(meta["grade"])),
-            book=str(meta["book"]),
-            chapter=int(str(meta["chapter"])),
-            page=int(str(meta["page"])),
-            text=str(doc),
-        )
+    for chunk, _ in sorted_items:
         # Skip an overlapping window from the same chapter if already kept
         if not any(
             (c.grade, c.book, c.chapter) == (chunk.grade, chunk.book, chunk.chapter)

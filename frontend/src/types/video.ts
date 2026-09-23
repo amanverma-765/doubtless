@@ -1,8 +1,16 @@
 export type VideoState = "idle" | "uploading" | "processing" | "ready" | "error";
+export type ProcessingStage =
+  | "uploading"
+  | "transcoding"
+  | "transcribing"
+  | "indexing"
+  | "generating_notes";
 
 export interface VideoStatus {
   state: VideoState;
   progress: number;
+  stage?: ProcessingStage | string;
+  stage_message?: string;
   id: string | null;
   playlist: string | null;
   error: string | null;
@@ -17,6 +25,8 @@ export interface VideoItem {
   poster: string | null;
   status: "idle" | "uploading" | "processing" | "ready" | "error" | "cancelled";
   progress: number;
+  stage?: ProcessingStage | string;
+  stage_message?: string;
   error?: string | null;
   created_at: string;
 }
@@ -30,3 +40,15 @@ export interface UploadConfig {
   max_upload_bytes: number;
   allowed_extensions: string[];
 }
+
+// Backward-compatible re-exports of study types
+export type {
+  VideoChapter,
+  VideoChaptersResponse,
+  VideoNotes,
+  VideoNotesResponse,
+  QuizQuestion,
+  VideoQuizResponse,
+  Flashcard,
+  VideoFlashcardsResponse,
+} from "./study";

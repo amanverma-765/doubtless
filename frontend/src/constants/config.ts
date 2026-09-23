@@ -15,13 +15,7 @@ export const DEFAULT_ALLOWED_EXTENSIONS = [
 ];
 
 export function formatFileSize(bytes: number): string {
-  if (bytes >= 1024 * 1024 * 1024) {
-    const gb = bytes / (1024 * 1024 * 1024);
-    return `${gb % 1 === 0 ? gb.toFixed(0) : gb.toFixed(1)} GB`;
-  }
-  if (bytes >= 1024 * 1024) {
-    const mb = bytes / (1024 * 1024);
-    return `${mb % 1 === 0 ? mb.toFixed(0) : mb.toFixed(1)} MB`;
-  }
+  if (bytes >= 1024 ** 3) return `${Number((bytes / 1024 ** 3).toFixed(1))} GB`;
+  if (bytes >= 1024 ** 2) return `${Number((bytes / 1024 ** 2).toFixed(1))} MB`;
   return `${Math.round(bytes / 1024)} KB`;
 }

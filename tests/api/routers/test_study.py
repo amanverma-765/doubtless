@@ -1,13 +1,7 @@
 """Integration tests for study endpoints: chapters, notes, quiz, and flashcards."""
 
-from collections.abc import Generator
-from pathlib import Path
-from unittest.mock import patch
-
-import pytest
 from fastapi.testclient import TestClient
 
-from doubtless.api.app import app
 from doubtless.domain.schemas import (
     Flashcard,
     QuizQuestion,
@@ -15,17 +9,6 @@ from doubtless.domain.schemas import (
     VideoNotes,
 )
 from doubtless.storage import db
-
-
-@pytest.fixture
-def client(tmp_path: Path) -> Generator[TestClient]:
-    """Test client using an isolated temporary database."""
-    test_db = tmp_path / "test_doubtless_api.db"
-    with patch.object(db, "_DB_PATH", test_db):
-        db._tables_initialized = False
-        db.init_db()
-        with TestClient(app) as test_client:
-            yield test_client
 
 
 def test_study_endpoints_404_for_unknown_video(client: TestClient) -> None:

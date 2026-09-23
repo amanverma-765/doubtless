@@ -6,20 +6,41 @@ import pytest
 
 from doubtless.rag.books.search import search_books
 from doubtless.rag.lecture.search import search_lecture
-from doubtless.rag.query_expansion import expand_query
+from doubtless.rag.query_expansion import (
+    ExpandedQueriesPayload,
+    _expander_agent,
+    _expansion_cache,
+    expand_query,
+)
+
+
+@pytest.fixture(autouse=True)
+def clean_expansion_cache() -> None:
+    """Ensure in-memory expansion cache does not leak across tests."""
+    _expansion_cache.clear()
+    yield
+    _expansion_cache.clear()
 
 
 @pytest.mark.asyncio
 async def test_expand_query_structure_and_caching() -> None:
     """Test query expansion returns original query and handles caching."""
     q = "wo jo 6 wala ligand tha"
-    res1 = await expand_query(q)
-    assert len(res1) >= 1
-    assert res1[0] == q
+    mock_run = MagicMock()
+    mock_run.output = ExpandedQueriesPayload(
+        queries=["EDTA hexadentate ligand", "coordination compounds"]
+    )
+    with patch.object(_expander_agent, "run", return_value=mock_run) as mock_agent_run:
+        res1 = await expand_query(q)
+        assert len(res1) >= 1
+        assert res1[0] == q
+        assert "EDTA hexadentate ligand" in res1
+        mock_agent_run.assert_called_once()
 
-    # Check that calling again hits the lru_cache
-    res2 = await expand_query(q)
-    assert res1 == res2
+        # Check that calling again hits the in-memory cache without calling agent
+        res2 = await expand_query(q)
+        assert res1 == res2
+        assert mock_agent_run.call_count == 1
 
 
 @pytest.mark.asyncio

@@ -136,6 +136,14 @@ def test_study_artifacts_storage(temp_db: Path) -> None:
     assert "[00:00] Welcome students." in window
     assert "[00:10] Today we discuss Newton's laws." in window
 
+    # Dialogue window should be empty when current_time is far ahead of spoken segments
+    empty_window = db.get_transcript_dialogue_window("v2", current_time=200.0)
+    assert empty_window == ""
+
+    # Active chapter at time
+    assert db.get_chapter_at_time("v2", 15.0).title == "Intro"
+    assert db.get_chapter_at_time("v2", 45.0).title == "Kinematics"
+
     # Chat messages
     db.add_message("v2", role="user", content="What is force?")
     db.add_message("v2", role="assistant", content="Force is an interaction...")
@@ -143,3 +151,8 @@ def test_study_artifacts_storage(temp_db: Path) -> None:
     assert len(msgs) == 2
     assert msgs[0].role == "user"
     assert msgs[1].role == "assistant"
+
+    # Clear chat messages
+    deleted_count = db.clear_messages("v2")
+    assert deleted_count == 2
+    assert len(db.get_messages("v2")) == 0

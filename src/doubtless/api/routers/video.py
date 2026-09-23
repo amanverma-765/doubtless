@@ -1,6 +1,5 @@
 """Video management endpoints: listing, metadata, streaming, and deletion."""
 
-import contextlib
 from pathlib import Path, PurePosixPath
 
 import anyio
@@ -16,9 +15,9 @@ from doubtless.domain.schemas import (
     VideoStatusResponse,
 )
 from doubtless.storage import db, file_storage, redis_store
+from doubtless.storage.cascade_delete import cascade_delete_video
 from doubtless.storage.redis_store import VideoProgressData
-from doubtless.storage.vector_store import delete_lecture_vectors
-from doubtless.worker.celery_app import celery_app, get_task_error
+from doubtless.worker.celery_app import get_task_error
 from doubtless.worker.tasks import transcode_video
 
 router = APIRouter(prefix="/videos", tags=["videos"])
@@ -253,14 +252,5 @@ def delete_video_by_id(video_id: str) -> VideoDeleteResponse:
             detail="Invalid video identifier format",
         )
 
-    v = db.get_video(video_id)
-    if v and v.task_id:
-        with contextlib.suppress(Exception):
-            celery_app.control.revoke(v.task_id, terminate=True, signal="SIGTERM")
-
-    redis_store.set_cancellation(video_id)
-    redis_store.delete_transcode_progress(video_id)
-    delete_lecture_vectors(video_id)
-    file_storage.delete_video_files(video_id)
-    db.delete_video(video_id)
+    cascade_delete_video(video_id)
     return VideoDeleteResponse(id=video_id)

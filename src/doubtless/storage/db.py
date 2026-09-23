@@ -48,7 +48,8 @@ def _ensure_tables(conn: sqlite3.Connection) -> None:
                 video_id TEXT NOT NULL,
                 role TEXT NOT NULL,
                 content TEXT NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(video_id) REFERENCES videos(id) ON DELETE CASCADE
             );
         """)
         conn.execute("""
@@ -58,7 +59,8 @@ def _ensure_tables(conn: sqlite3.Connection) -> None:
                 start_time REAL NOT NULL,
                 end_time REAL NOT NULL,
                 text TEXT NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY(video_id) REFERENCES videos(id) ON DELETE CASCADE
             );
         """)
         conn.execute("""
@@ -221,15 +223,10 @@ def update_video(
 
 
 def delete_video(video_id: str) -> bool:
-    """Delete a video, its message history, and all generated study artifacts."""
+    """Delete a video; foreign key cascade purges all 6 dependent tables."""
     with _get_db() as conn:
+        # ponytail: PRAGMA foreign_keys = ON handles all child tables automatically
         cursor = conn.execute("DELETE FROM videos WHERE id = ?", (video_id,))
-        conn.execute("DELETE FROM messages WHERE video_id = ?", (video_id,))
-        conn.execute("DELETE FROM lecture_transcripts WHERE video_id = ?", (video_id,))
-        conn.execute("DELETE FROM video_chapters WHERE video_id = ?", (video_id,))
-        conn.execute("DELETE FROM video_notes WHERE video_id = ?", (video_id,))
-        conn.execute("DELETE FROM video_quizzes WHERE video_id = ?", (video_id,))
-        conn.execute("DELETE FROM video_flashcards WHERE video_id = ?", (video_id,))
         return cursor.rowcount > 0
 
 
@@ -273,6 +270,20 @@ def get_chapters(video_id: str) -> list[VideoChapter]:
             )
             for r in rows
         ]
+
+
+def get_chapter_at_time(video_id: str, current_time: float) -> VideoChapter | None:
+    """Retrieve the active chapter matching the playhead timestamp."""
+    chapters = get_chapters(video_id)
+    if not chapters:
+        return None
+    matched: VideoChapter | None = None
+    for ch in chapters:
+        if ch.start_time <= current_time:
+            matched = ch
+        else:
+            break
+    return matched or chapters[0]
 
 
 def save_video_notes(notes: VideoNotes) -> None:
@@ -382,10 +393,10 @@ def insert_transcripts(video_id: str, segments: list[TranscriptSegment]) -> None
 def get_transcript_dialogue_window(
     video_id: str,
     current_time: float,
-    window_before: float = 90.0,
+    window_before: float = 60.0,
     window_after: float = 15.0,
 ) -> str:
-    """Retrieve chronological spoken dialogue around the specified timestamp."""
+    """Retrieve spoken dialogue strictly within the local timestamp window."""
     start_bound = max(0.0, current_time - window_before)
     end_bound = current_time + window_after
 
@@ -450,6 +461,13 @@ def get_messages(video_id: str, limit: int | None = None) -> list[ChatMessage]:
                 (video_id,),
             ).fetchall()
         return [_row_to_message(row) for row in rows]
+
+
+def clear_messages(video_id: str) -> int:
+    """Delete all chat messages for a specific video and return deleted row count."""
+    with _get_db() as conn:
+        cursor = conn.execute("DELETE FROM messages WHERE video_id = ?", (video_id,))
+        return cursor.rowcount
 
 
 def init_db() -> None:

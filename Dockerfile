@@ -1,7 +1,7 @@
 FROM python:3.14-slim
 
 RUN apt-get update \
- && apt-get install -y --no-install-recommends ffmpeg \
+ && apt-get install -y --no-install-recommends ffmpeg gcc libc6-dev \
  && rm -rf /var/lib/apt/lists/*
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
@@ -14,6 +14,13 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 COPY src/ ./src/
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev
+
+RUN echo "/app/.venv/lib/python3.14/site-packages/nvidia/cublas/lib" > /etc/ld.so.conf.d/nvidia.conf \
+ && echo "/app/.venv/lib/python3.14/site-packages/nvidia/cudnn/lib" >> /etc/ld.so.conf.d/nvidia.conf \
+ && echo "/app/.venv/lib/python3.14/site-packages/nvidia/cuda_nvrtc/lib" >> /etc/ld.so.conf.d/nvidia.conf \
+ && ldconfig
+
+ENV LD_LIBRARY_PATH="/app/.venv/lib/python3.14/site-packages/nvidia/cublas/lib:/app/.venv/lib/python3.14/site-packages/nvidia/cudnn/lib:/app/.venv/lib/python3.14/site-packages/nvidia/cuda_nvrtc/lib:${LD_LIBRARY_PATH}"
 
 # Default entrypoint runs doubtless CLI (defaults to api server)
 CMD ["uv", "run", "doubtless", "api"]

@@ -21,6 +21,7 @@ from pydantic_ai.messages import (
     UserPromptPart,
 )
 
+from doubtless.core.formatting import format_timestamp
 from doubtless.domain.schemas import (
     ChatHistoryResponse,
     ChatRequest,
@@ -47,6 +48,23 @@ def get_chat_history(video_id: str) -> ChatHistoryResponse:
         video_id=video_id,
         messages=db.get_messages(video_id),
     )
+
+
+@router.delete("/{video_id}")
+def clear_chat_history(video_id: str) -> dict[str, Any]:
+    """Delete all doubt-solving message history for a specific video."""
+    if not db.get_video(video_id):
+        raise HTTPException(
+            status_code=404,
+            detail=f"Video '{video_id}' not found",
+        )
+
+    deleted_count = db.clear_messages(video_id)
+    return {
+        "status": "cleared",
+        "video_id": video_id,
+        "deleted_count": deleted_count,
+    }
 
 
 def _sse(data: dict[str, Any]) -> str:
@@ -246,10 +264,33 @@ async def ask_doubt(
     # 2. Save student question immediately
     _safe_add_message(target_id, role="user", content=q)
 
-    # 3. Resolve doubt context & clean student prompt
+    # 3. Resolve doubt context & enrich prompt with active playhead context
     video_title = video.title
-    prompt = q
-    deps = DoubtContext(video_id=target_id, current_time=request.current_time)
+    current_time = request.current_time if request.current_time is not None else 0.0
+    ts_formatted = format_timestamp(current_time)
+    dialogue = db.get_transcript_dialogue_window(
+        target_id,
+        current_time,
+        window_before=90.0,
+        window_after=15.0,
+    )
+    chapter = db.get_chapter_at_time(target_id, current_time)
+
+    context_lines: list[str] = [
+        f"[CURRENT PLAYHEAD TIMESTAMP: {ts_formatted}]",
+    ]
+    if chapter:
+        context_lines.append(f"[CURRENT TOPIC / CHAPTER: {chapter.title}]")
+    if dialogue:
+        context_lines.append(f"[SPOKEN DIALOGUE AROUND {ts_formatted}]:\n{dialogue}")
+    else:
+        context_lines.append(
+            f"[STATUS: No spoken dialogue recorded around {ts_formatted}. "
+            "Teacher is silent, writing on board, or working through problems.]"
+        )
+
+    prompt = f"{'\n'.join(context_lines)}\n\nStudent Doubt / Question: {q}"
+    deps = DoubtContext(video_id=target_id, current_time=current_time)
 
     # Check for SSE streaming request
     accept_header = raw_request.headers.get("accept", "")

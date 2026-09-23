@@ -4,6 +4,7 @@ import { Upload as UploadIcon, AlertCircle, RefreshCw } from "lucide-react";
 import type { VideoStatus } from "@/types/video";
 import { API_BASE } from "@/constants/config";
 import type { MediaPlayerInstance } from "@vidstack/react";
+import { formatStageLabel } from "@/utils/format";
 import { VideoPlayer } from "./VideoPlayer";
 
 interface VideoSectionProps {
@@ -136,14 +137,7 @@ export const VideoSection: React.FC<VideoSectionProps> = ({
             />
           </div>
           <span className="text-xs text-zinc-300 font-medium tracking-wide text-center">
-            {status?.stage_message ||
-              (status?.stage === "transcribing"
-                ? `Transcribing Speech (GPU) ${pctText}`
-                : status?.stage === "indexing"
-                ? `Indexing Lecture Vectors ${pctText}`
-                : status?.stage === "generating_notes"
-                ? `Generating Chapters & Notes ${pctText}`
-                : `Transcoding Video (HLS) ${pctText}`)}
+            {formatStageLabel(status?.stage, progress)}
           </span>
         </div>
       )}

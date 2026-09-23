@@ -39,9 +39,7 @@ export const QuizTab: React.FC<QuizTabProps> = ({
       <TabEmptyState
         icon={HelpCircle}
         title="Quiz Not Ready"
-        subtitle="Interactive quiz questions will appear here once the video is processed."
-        isProcessing={status?.state !== "ready"}
-        stageMessage={status?.stage_message}
+        subtitle="Interactive quiz questions will appear here once video processing completes."
       />
     );
   }

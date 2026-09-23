@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { Film, Play, Trash2, Clock } from "lucide-react";
 import type { VideoItem } from "@/types/video";
 import { API_BASE } from "@/constants/config";
+import { formatStageLabel } from "@/utils/format";
 
 interface VideoCardProps {
   video: VideoItem;
@@ -63,13 +64,7 @@ export const VideoCard: React.FC<VideoCardProps> = ({
             </span>
           ) : (
             <span className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-amber-600 text-white shadow-2xs">
-              {video.stage === "transcribing"
-                ? `Transcribing ${Math.round((video.progress || 0) * 100)}%`
-                : video.stage === "indexing"
-                ? `Indexing ${Math.round((video.progress || 0) * 100)}%`
-                : video.stage === "generating_notes"
-                ? `Notes ${Math.round((video.progress || 0) * 100)}%`
-                : `Transcoding ${Math.round((video.progress || 0) * 100)}%`}
+              {formatStageLabel(video.stage, video.progress)}
             </span>
           )}
         </div>

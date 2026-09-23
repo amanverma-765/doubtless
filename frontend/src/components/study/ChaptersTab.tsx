@@ -34,9 +34,7 @@ export const ChaptersTab: React.FC<ChaptersTabProps> = ({
       <TabEmptyState
         icon={ListOrdered}
         title="Chapters Not Ready"
-        subtitle="Chapters will appear here once the video is processed."
-        isProcessing={status?.state !== "ready"}
-        stageMessage={status?.stage_message}
+        subtitle="Chapters will appear here once video processing completes."
       />
     );
   }

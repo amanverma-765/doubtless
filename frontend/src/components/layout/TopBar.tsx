@@ -1,14 +1,16 @@
 import type React from "react";
 import { useRef } from "react";
 import { Link } from "react-router-dom";
-import { Upload, ChevronLeft } from "lucide-react";
+import { Upload, ChevronLeft, Trash2 } from "lucide-react";
 import type { VideoStatus } from "@/types/video";
+import { formatStageLabel } from "@/utils/format";
 
 interface TopBarProps {
   onFileSelect: (file: File) => void;
   status?: VideoStatus | null;
   showBack?: boolean;
   activeTitle?: string | null;
+  onDeleteVideo?: () => void;
 }
 
 export const TopBar: React.FC<TopBarProps> = ({
@@ -16,6 +18,7 @@ export const TopBar: React.FC<TopBarProps> = ({
   status,
   showBack,
   activeTitle,
+  onDeleteVideo,
 }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -56,19 +59,13 @@ export const TopBar: React.FC<TopBarProps> = ({
         {status?.state === "processing" && (
           <span className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-amber-50 text-amber-800 border border-amber-200/90 shadow-2xs">
             <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
-            {status.stage === "transcribing"
-              ? `Transcribing ${Math.round((status.progress || 0) * 100)}%`
-              : status.stage === "indexing"
-              ? `Indexing ${Math.round((status.progress || 0) * 100)}%`
-              : status.stage === "generating_notes"
-              ? `Notes & Chapters ${Math.round((status.progress || 0) * 100)}%`
-              : `Transcoding ${Math.round((status.progress || 0) * 100)}%`}
+            {formatStageLabel(status.stage, status.progress)}
           </span>
         )}
         {status?.state === "uploading" && (
           <span className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-indigo-50 text-indigo-700 border border-indigo-200 shadow-2xs">
             <span className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse" />
-            Uploading {Math.round((status.progress || 0) * 100)}%
+            {formatStageLabel("uploading", status.progress)}
           </span>
         )}
 
@@ -79,6 +76,18 @@ export const TopBar: React.FC<TopBarProps> = ({
           className="hidden"
           onChange={handleFileChange}
         />
+
+        {onDeleteVideo && (
+          <button
+            type="button"
+            onClick={onDeleteVideo}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-zinc-600 hover:text-rose-600 bg-white border border-[#d5d1c7] hover:border-rose-300 rounded-full hover:bg-rose-50/50 transition-all focus:outline-none focus:ring-2 focus:ring-rose-500/20 cursor-pointer shadow-2xs active:scale-95"
+            title="Delete this video"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Delete</span>
+          </button>
+        )}
 
         <button
           type="button"

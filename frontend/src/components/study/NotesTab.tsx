@@ -53,9 +53,7 @@ export const NotesTab: React.FC<NotesTabProps> = ({
       <TabEmptyState
         icon={FileText}
         title="Study Notes Not Ready"
-        subtitle="Study notes will appear here once the video is processed."
-        isProcessing={status?.state !== "ready"}
-        stageMessage={status?.stage_message}
+        subtitle="Study notes will appear here once video processing completes."
       />
     );
   }

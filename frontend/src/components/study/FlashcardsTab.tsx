@@ -101,9 +101,7 @@ export const FlashcardsTab: React.FC<FlashcardsTabProps> = ({
       <TabEmptyState
         icon={Layers}
         title="Flashcards Not Ready"
-        subtitle="Key revision flashcards will appear here once the video is processed."
-        isProcessing={status?.state !== "ready"}
-        stageMessage={status?.stage_message}
+        subtitle="Key revision flashcards will appear here once video processing completes."
       />
     );
   }

@@ -252,5 +252,10 @@ def delete_video_by_id(video_id: str) -> VideoDeleteResponse:
             detail="Invalid video identifier format",
         )
 
-    cascade_delete_video(video_id)
+    result = cascade_delete_video(video_id)
+    if not result.get("deleted"):
+        raise HTTPException(
+            status_code=404,
+            detail=f"Video '{video_id}' not found",
+        )
     return VideoDeleteResponse(id=video_id)

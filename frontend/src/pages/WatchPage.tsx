@@ -8,9 +8,10 @@ import { VideoSection } from "@/components/player/VideoSection";
 import { FeatureCards } from "@/components/player/FeatureCards";
 import { RightPanel } from "@/components/studio/RightPanel";
 import { UploadModal } from "@/components/upload/UploadModal";
+import { DeleteModal } from "@/components/library/DeleteModal";
 import { useVideoStatus } from "@/hooks/useVideoStatus";
 import { useVideoUpload } from "@/hooks/useVideoUpload";
-import { fetchVideoById } from "@/services/videoService";
+import { fetchVideoById, deleteVideo as apiDeleteVideo } from "@/services/videoService";
 import type { FeatureTabKey } from "@/types";
 
 export const WatchPage: React.FC = () => {
@@ -21,6 +22,8 @@ export const WatchPage: React.FC = () => {
   const [currentTime, setCurrentTime] = useState<number>(0);
   const [videoTitle, setVideoTitle] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<FeatureTabKey>("doubt");
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState<boolean>(false);
+  const [isDeletingVideo, setIsDeletingVideo] = useState<boolean>(false);
 
   const handleSeek = useCallback((seconds: number) => {
     if (playerRef.current) {
@@ -70,6 +73,19 @@ export const WatchPage: React.FC = () => {
     },
   });
 
+  const handleDeleteVideo = async () => {
+    if (!videoId) return;
+    setIsDeletingVideo(true);
+    try {
+      await apiDeleteVideo(videoId);
+      navigate("/");
+    } catch (err: unknown) {
+      alert((err as Error)?.message || "Failed to delete video");
+      setIsDeletingVideo(false);
+      setIsDeleteModalOpen(false);
+    }
+  };
+
   if (isNotFound) {
     return (
       <div className="flex flex-col h-screen w-screen bg-[#fcfbfa]">
@@ -101,6 +117,7 @@ export const WatchPage: React.FC = () => {
         status={status}
         showBack={true}
         activeTitle={videoTitle || "Video Workspace"}
+        onDeleteVideo={() => setIsDeleteModalOpen(true)}
       />
 
       {uploadError && (
@@ -142,6 +159,7 @@ export const WatchPage: React.FC = () => {
             activeTab={activeTab}
             videoId={videoId || null}
             currentTime={currentTime}
+            getCurrentTime={() => playerRef.current?.currentTime ?? currentTime}
             onSeek={handleSeek}
             status={status}
           />
@@ -156,6 +174,17 @@ export const WatchPage: React.FC = () => {
         onCancel={clearPendingFile}
         isUploading={isUploading}
         uploadProgress={uploadProgress}
+      />
+
+      {/* Delete Video Confirmation Modal */}
+      <DeleteModal
+        isOpen={isDeleteModalOpen}
+        videoTitle={videoTitle || "this video"}
+        onConfirm={handleDeleteVideo}
+        onCancel={() => {
+          if (!isDeletingVideo) setIsDeleteModalOpen(false);
+        }}
+        isDeleting={isDeletingVideo}
       />
     </div>
   );

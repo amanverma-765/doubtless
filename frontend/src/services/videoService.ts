@@ -11,6 +11,9 @@ import {
 } from "@/constants/config";
 import { request, parseErrorDetail } from "./client";
 
+// Re-export study APIs for backward compatibility
+export * from "./studyService";
+
 export async function fetchVideos(): Promise<VideoItem[]> {
   return request<VideoItem[]>("/api/v1/videos", { cache: "no-store" });
 }
@@ -21,25 +24,16 @@ export async function fetchVideoById(videoId: string): Promise<VideoItem> {
   });
 }
 
-export async function fetchVideoStatus(
-  videoId?: string | null
-): Promise<VideoStatus> {
-  const path = videoId
-    ? `/api/v1/videos/${encodeURIComponent(videoId)}/status`
-    : "/api/v1/videos/status";
-  return request<VideoStatus>(path, { cache: "no-store" });
+export async function fetchVideoStatus(videoId: string): Promise<VideoStatus> {
+  return request<VideoStatus>(
+    `/api/v1/videos/${encodeURIComponent(videoId)}/status`,
+    { cache: "no-store" }
+  );
 }
 
-let cachedConfig: UploadConfig | null = null;
-
 export async function fetchUploadConfig(): Promise<UploadConfig> {
-  if (cachedConfig) return cachedConfig;
   try {
-    const config = await request<UploadConfig>("/api/v1/videos/config", {
-      cache: "no-store",
-    });
-    cachedConfig = config;
-    return config;
+    return await request<UploadConfig>("/api/v1/videos/config");
   } catch {
     return {
       max_upload_bytes: DEFAULT_MAX_UPLOAD_BYTES,
@@ -94,55 +88,52 @@ export function uploadVideo(
       signal.addEventListener("abort", abortHandler, { once: true });
     }
 
-    const cleanup = () => {
-      if (signal && abortHandler) {
-        signal.removeEventListener("abort", abortHandler);
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable && onProgress) {
+        const progress = Math.min(1, Math.max(0, event.loaded / event.total));
+        onProgress(progress);
       }
     };
 
-    if (xhr.upload && onProgress) {
-      xhr.upload.onprogress = (event) => {
-        if (event.lengthComputable && event.total > 0) {
-          onProgress(event.loaded / event.total);
-        }
-      };
-    }
-
     xhr.onload = () => {
-      cleanup();
+      if (signal && abortHandler) {
+        signal.removeEventListener("abort", abortHandler);
+      }
       if (xhr.status >= 200 && xhr.status < 300) {
         try {
-          const data = JSON.parse(xhr.responseText);
-          if (data && data.id) {
-            resolve(data);
-          } else {
-            reject(
-              new Error("Server returned an invalid response without video ID.")
-            );
-          }
+          const res = JSON.parse(xhr.responseText) as UploadAccepted;
+          resolve(res);
         } catch {
-          reject(
-            new Error(
-              `Server returned unexpected response (status ${xhr.status}).`
-            )
-          );
+          resolve({ id: "" });
         }
       } else {
+        let msg: string | undefined;
         try {
-          const err = JSON.parse(xhr.responseText);
-          const detail = parseErrorDetail(err);
-          reject(
-            new Error(detail || `Upload failed with status ${xhr.status}`)
-          );
+          const errJson = JSON.parse(xhr.responseText);
+          msg = parseErrorDetail(errJson);
         } catch {
-          reject(new Error(`Upload failed with status ${xhr.status}`));
+          // Response body is not JSON
         }
+        reject(
+          new Error(
+            msg || `Upload failed with HTTP ${xhr.status}: ${xhr.statusText}`
+          )
+        );
       }
     };
 
     xhr.onerror = () => {
-      cleanup();
-      reject(new Error("Network error occurred during video upload."));
+      if (signal && abortHandler) {
+        signal.removeEventListener("abort", abortHandler);
+      }
+      reject(new Error("Network connection error during file upload."));
+    };
+
+    xhr.onabort = () => {
+      if (signal && abortHandler) {
+        signal.removeEventListener("abort", abortHandler);
+      }
+      reject(new DOMException("Upload canceled by user", "AbortError"));
     };
 
     xhr.send(file);

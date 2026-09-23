@@ -1,6 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import type { ChatMessage } from "@/types/chat";
-import { fetchChatHistory, streamChatMessage } from "@/services/chatService";
+import {
+  fetchChatHistory,
+  clearChatHistory,
+  streamChatMessage,
+} from "@/services/chatService";
 
 const INITIAL_GREETING: ChatMessage = {
   role: "assistant",
@@ -11,6 +15,7 @@ const INITIAL_GREETING: ChatMessage = {
 export function useChat(videoId: string | null) {
   const [messages, setMessages] = useState<ChatMessage[]>([INITIAL_GREETING]);
   const [isSending, setIsSending] = useState<boolean>(false);
+  const [isClearing, setIsClearing] = useState<boolean>(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -160,12 +165,51 @@ export function useChat(videoId: string | null) {
     [videoId, isSending]
   );
 
+  const clearChat = useCallback(async () => {
+    if (!videoId || isClearing || isSending) return;
+    const targetId = videoId;
+    setIsClearing(true);
+    setError(null);
+
+    // Abort in-flight streaming if any
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+      setIsSending(false);
+      setStatusMessage(null);
+    }
+
+    try {
+      await clearChatHistory(targetId);
+      if (activeVideoIdRef.current === targetId) {
+        setMessages([
+          {
+            role: "assistant",
+            content:
+              "Chat history cleared. Ask any doubt or question about this video.",
+          },
+        ]);
+      }
+    } catch (err: unknown) {
+      if (activeVideoIdRef.current === targetId) {
+        const msg = (err as Error)?.message || "Failed to clear chat history";
+        setError(msg);
+      }
+    } finally {
+      if (activeVideoIdRef.current === targetId) {
+        setIsClearing(false);
+      }
+    }
+  }, [videoId, isClearing, isSending]);
+
   return {
     messages,
     isSending,
+    isClearing,
     statusMessage,
     error,
     sendMessage,
+    clearChat,
     clearError: () => setError(null),
   };
 }

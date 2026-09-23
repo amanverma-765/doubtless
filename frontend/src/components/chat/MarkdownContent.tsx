@@ -168,10 +168,22 @@ export const MarkdownContent: React.FC<MarkdownContentProps> = ({
             if (href?.startsWith("#cite:")) {
               const rawCitation = decodeURIComponent(href.replace("#cite:", ""));
               const parts = rawCitation.split("|").map((p) => p.trim()).filter(Boolean);
-              const formatted =
-                parts.length >= 3
-                  ? `${parts[0]} · ${parts[1]} · P. ${parts[parts.length - 1].replace(/^Page\s*/i, "")}`
-                  : rawCitation;
+              let formatted: string;
+              if (parts.length >= 4) {
+                // [Class X | Book Name | Chapter Y | Page Z]
+                const grade = parts[0];
+                const book = parts[1];
+                const chapter = parts[2].replace(/^Chapter\s*/i, "Ch. ");
+                const page = `P. ${parts[3].replace(/^Page\s*/i, "")}`;
+                formatted = `${grade} · ${book} · ${chapter} · ${page}`;
+              } else if (parts.length === 3) {
+                const grade = parts[0];
+                const book = parts[1];
+                const chapterOrPage = parts[2].replace(/^Chapter\s*/i, "Ch. ");
+                formatted = `${grade} · ${book} · ${chapterOrPage}`;
+              } else {
+                formatted = rawCitation;
+              }
 
               return (
                 <span

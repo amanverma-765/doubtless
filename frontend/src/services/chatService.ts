@@ -20,6 +20,12 @@ export async function fetchChatHistory(videoId: string): Promise<ChatMessage[]> 
   }
 }
 
+export async function clearChatHistory(videoId: string): Promise<void> {
+  await request(`/api/v1/chat/${encodeURIComponent(videoId)}`, {
+    method: "DELETE",
+  });
+}
+
 export async function sendChatMessage(
   message: string,
   videoId: string,

@@ -1,13 +1,17 @@
 import type React from "react";
-import { useRef, useEffect } from "react";
+import { useRef, useEffect, useState } from "react";
 import {
   Bot,
   Sparkles,
   MessageSquare,
+  Trash2,
+  Loader2,
+  AlertTriangle,
 } from "lucide-react";
 import { useChat } from "@/hooks/useChat";
 import { ChatMessageItem } from "@/components/chat/ChatMessageItem";
 import { ChatInput } from "@/components/chat/ChatInput";
+import { Modal } from "@/components/common/Modal";
 import {
   ChaptersTab,
   NotesTab,
@@ -22,6 +26,7 @@ export interface RightPanelProps {
   videoId: string | null;
   activeTab?: FeatureTabKey;
   currentTime?: number;
+  getCurrentTime?: () => number;
   onSeek?: (seconds: number) => void;
   status?: VideoStatus | null;
 }
@@ -38,10 +43,24 @@ export const RightPanel: React.FC<RightPanelProps> = ({
   videoId,
   activeTab = "doubt",
   currentTime = 0,
+  getCurrentTime,
   onSeek,
   status,
 }) => {
-  const { messages, isSending, statusMessage, error, sendMessage } = useChat(videoId);
+  const {
+    messages,
+    isSending,
+    isClearing,
+    statusMessage,
+    error,
+    sendMessage,
+    clearChat,
+  } = useChat(videoId);
+
+  // ponytail: inline live time fallback
+  const resolveCurrentTime = () => getCurrentTime?.() ?? currentTime;
+
+  const [isConfirmOpen, setIsConfirmOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const isReady = status ? status.state === "ready" : !videoId;
   const hasChatHistory = messages.some((m) => m.role === "user");
@@ -56,6 +75,11 @@ export const RightPanel: React.FC<RightPanelProps> = ({
     }
   }, [messages, isSending, statusMessage, activeTab]);
 
+  const handleConfirmClear = async () => {
+    await clearChat();
+    setIsConfirmOpen(false);
+  };
+
   return (
     <aside className="w-full lg:w-[var(--panel)] h-full bg-white border border-[#e2e0da] rounded-2xl flex flex-col overflow-hidden shadow-xs">
       {/* Header bar */}
@@ -64,10 +88,28 @@ export const RightPanel: React.FC<RightPanelProps> = ({
           {TAB_TITLES[activeTab]}
         </span>
         {activeTab === "doubt" && (
-          <span className="flex items-center gap-1.5 text-[10.5px] px-2.5 py-0.5 rounded-full bg-zinc-800/90 border border-zinc-700/60 text-zinc-300 font-medium">
-            <Sparkles className="w-3 h-3 text-indigo-400" />
-            AI Tutor
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="flex items-center gap-1.5 text-[10.5px] px-2.5 py-0.5 rounded-full bg-zinc-800/90 border border-zinc-700/60 text-zinc-300 font-medium">
+              <Sparkles className="w-3 h-3 text-indigo-400" />
+              AI Tutor
+            </span>
+            {hasChatHistory && (
+              <button
+                type="button"
+                onClick={() => setIsConfirmOpen(true)}
+                disabled={isSending || isClearing}
+                className="p-1 text-zinc-400 hover:text-red-400 hover:bg-zinc-800 rounded-md transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                title="Clear chat history"
+                aria-label="Clear chat history"
+              >
+                {isClearing ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Trash2 className="w-3.5 h-3.5" />
+                )}
+              </button>
+            )}
+          </div>
         )}
       </div>
 
@@ -77,9 +119,7 @@ export const RightPanel: React.FC<RightPanelProps> = ({
           <TabEmptyState
             icon={MessageSquare}
             title="Doubt Solver Not Ready"
-            subtitle="Doubt resolution will be available once the video is processed."
-            isProcessing={true}
-            stageMessage={status?.stage_message}
+            subtitle="Doubt resolution will be available once video processing completes."
           />
         ) : (
           /* Scrollable chat messages */
@@ -116,7 +156,7 @@ export const RightPanel: React.FC<RightPanelProps> = ({
                     <button
                       key={pIdx}
                       type="button"
-                      onClick={() => sendMessage(promptText, currentTime)}
+                      onClick={() => sendMessage(promptText, resolveCurrentTime())}
                       disabled={isSending || !videoId}
                       className="w-fit max-w-[88%] text-right text-[12.5px] text-zinc-700 bg-white hover:bg-indigo-50/70 border border-[#e2e0da] hover:border-indigo-200 px-3 py-2 rounded-xl transition-all shadow-2xs hover:shadow-xs cursor-pointer leading-snug"
                     >
@@ -155,7 +195,7 @@ export const RightPanel: React.FC<RightPanelProps> = ({
 
         {/* Sticky chat input */}
         <ChatInput
-          onSend={(text) => sendMessage(text, currentTime)}
+          onSend={(text) => sendMessage(text, resolveCurrentTime())}
           disabled={isSending || !videoId || !isReady}
           placeholder={
             !isReady
@@ -200,6 +240,61 @@ export const RightPanel: React.FC<RightPanelProps> = ({
           status={status}
         />
       </div>
+
+      {/* Clear Chat Confirmation Modal */}
+      <Modal
+        isOpen={isConfirmOpen}
+        onClose={() => {
+          if (!isClearing) setIsConfirmOpen(false);
+        }}
+        isBusy={isClearing}
+        maxWidth="max-w-sm"
+      >
+        <div className="space-y-4">
+          <div className="flex items-start gap-3">
+            <div className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center shrink-0 text-red-600">
+              <AlertTriangle className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-base font-semibold text-zinc-900">
+                Clear Chat History?
+              </h3>
+              <p className="text-xs text-zinc-500 mt-1 leading-relaxed">
+                This will permanently delete all questions and tutor responses for this video lecture. This action cannot be undone.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-end gap-2.5 pt-2">
+            <button
+              type="button"
+              onClick={() => setIsConfirmOpen(false)}
+              disabled={isClearing}
+              className="px-3 py-1.5 text-xs font-medium text-zinc-600 hover:text-zinc-800 hover:bg-zinc-100 rounded-lg transition-colors disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleConfirmClear}
+              disabled={isClearing}
+              className="px-3.5 py-1.5 text-xs font-medium bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors flex items-center gap-1.5 shadow-xs disabled:opacity-50"
+            >
+              {isClearing ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  Clearing...
+                </>
+              ) : (
+                <>
+                  <Trash2 className="w-3.5 h-3.5" />
+                  Clear Chat
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+      </Modal>
     </aside>
   );
 };

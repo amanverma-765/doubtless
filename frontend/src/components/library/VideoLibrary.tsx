@@ -36,10 +36,10 @@ export const VideoLibrary: React.FC<VideoLibraryProps> = ({
     <div className="w-full max-w-7xl mx-auto px-6 py-8">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
         <div>
-          <h2 className="text-2xl font-serif italic text-[#1f1f1f]">
+          <h2 className="text-3xl font-serif italic text-zinc-900 tracking-tight">
             Video Library
           </h2>
-          <p className="text-xs text-[#6b6b6b] mt-1 font-medium tracking-wide">
+          <p className="text-xs text-zinc-500 mt-1.5 font-medium tracking-wide">
             Select a video to start learning and solving doubts, or upload a new one.
           </p>
         </div>

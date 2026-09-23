@@ -1,12 +1,13 @@
 import type React from "react";
 import { useEffect, useState, useRef } from "react";
-import { Film, Upload, X, AlertCircle, Loader2 } from "lucide-react";
+import { Film, Upload, AlertCircle, Loader2 } from "lucide-react";
 import {
   formatFileSize,
   DEFAULT_MAX_UPLOAD_BYTES,
   DEFAULT_ALLOWED_EXTENSIONS,
 } from "@/constants/config";
 import { fetchUploadConfig } from "@/services/videoService";
+import { Modal } from "@/components/common";
 
 interface UploadModalProps {
   isOpen: boolean;
@@ -69,17 +70,6 @@ export const UploadModal: React.FC<UploadModalProps> = ({
     }
   }, [isOpen, isUploading]);
 
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (!isOpen || isUploading) return;
-      if (e.key === "Escape") {
-        onCancel();
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen, isUploading, onCancel]);
-
   if (!isOpen || !file) return null;
 
   const fileExt = file.name.includes(".")
@@ -101,151 +91,139 @@ export const UploadModal: React.FC<UploadModalProps> = ({
   };
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs animate-in fade-in duration-150"
-      onClick={() => {
-        if (!isUploading) onCancel();
-      }}
+    <Modal
+      isOpen={isOpen}
+      onClose={onCancel}
+      isBusy={isUploading}
+      maxWidth="max-w-md"
     >
-      <div
-        className="bg-white border border-[#e2e0da] rounded-2xl shadow-2xl max-w-md w-full p-6 text-left relative"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <button
-          type="button"
-          onClick={onCancel}
-          disabled={isUploading}
-          className="absolute top-4 right-4 w-8 h-8 rounded-full flex items-center justify-center text-[#8a8880] hover:text-[#1f1f1f] hover:bg-[#f0eee9] transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-        >
-          <X className="w-4 h-4" />
-        </button>
-
-        <div className="flex items-center gap-3 mb-5">
-          <div className="w-10 h-10 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-[#4f46e5]">
-            <Film className="w-5 h-5" />
-          </div>
-          <div>
-            <h3 className="text-lg font-serif italic text-[#1f1f1f] leading-none">
-              Upload Video
-            </h3>
-            <p className="text-xs text-[#6b6b6b] mt-1 font-medium">
-              Give your video a clear title for the library.
-            </p>
-          </div>
+      <div className="flex items-center gap-3 mb-5">
+        <div className="w-10 h-10 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600">
+          <Film className="w-5 h-5" />
         </div>
+        <div>
+          <h3 className="text-xl font-serif italic text-zinc-900 leading-none">
+            Upload Video
+          </h3>
+          <p className="text-xs text-zinc-500 mt-1 font-medium">
+            Give your video a clear title for the library.
+          </p>
+        </div>
+      </div>
 
-        {/* File Details preview */}
-        <div
-          className={`border rounded-xl p-3 flex items-center justify-between text-xs transition-colors ${
-            isInvalid
-              ? "border-rose-200 bg-rose-50/40 text-[#6b6b6b] mb-2"
-              : "border-[#e8e6df] bg-[#faf9f6] text-[#6b6b6b] mb-4"
-          }`}
-        >
-          <div className="truncate pr-2 min-w-0">
-            <span className="font-semibold text-[#1f1f1f] block truncate">
-              {file.name}
-            </span>
-          </div>
-          <span
-            className={`text-[11px] font-medium whitespace-nowrap px-2 py-0.5 rounded border shrink-0 ${
-              isInvalid
-                ? "bg-rose-100 text-rose-700 border-rose-300 font-semibold"
-                : "bg-white text-[#8a8880] border-[#e2e0da]"
+      {/* File Details preview */}
+      <div
+        className={`border rounded-xl p-3 flex items-center justify-between text-xs transition-colors ${
+          isInvalid
+            ? "bg-rose-50/70 border-rose-200 text-rose-900"
+            : "bg-[#faf9f7] border-[#e5e2db] text-zinc-600"
+        }`}
+      >
+        <div className="flex items-center gap-2.5 truncate">
+          <Film
+            className={`w-4 h-4 shrink-0 ${
+              isInvalid ? "text-rose-500" : "text-zinc-400"
             }`}
-          >
-            {formattedSize}
+          />
+          <span className="font-medium text-zinc-900 truncate">
+            {file.name}
           </span>
         </div>
+        <span
+          className={`font-mono shrink-0 ml-2 font-semibold ${
+            isInvalid ? "text-rose-600" : "text-zinc-500"
+          }`}
+        >
+          {formattedSize}
+        </span>
+      </div>
 
-        {isOverSize && (
-          <p className="text-xs text-rose-600 mb-3 font-medium flex items-center gap-1.5">
-            <AlertCircle className="w-3.5 h-3.5 shrink-0 text-rose-500" />
-            <span>
-              File size exceeds maximum allowed limit of {formattedMaxSize}.
-            </span>
-          </p>
-        )}
+      {/* Constraints Warning Alert */}
+      {isUnsupportedExt && (
+        <div className="mt-3 p-2.5 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl flex items-center gap-2 text-xs">
+          <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+          <span>
+            Unsupported format (.{fileExt}). Allowed:{" "}
+            {allowedExtensions.join(", ")}
+          </span>
+        </div>
+      )}
 
-        {isUnsupportedExt && (
-          <p className="text-xs text-rose-600 mb-3 font-medium flex items-center gap-1.5">
-            <AlertCircle className="w-3.5 h-3.5 shrink-0 text-rose-500" />
-            <span>
-              Unsupported file format (.{fileExt}). Allowed formats:{" "}
-              {allowedExtensions.map((e) => e.toUpperCase()).join(", ")}.
-            </span>
-          </p>
-        )}
+      {isOverSize && (
+        <div className="mt-3 p-2.5 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl flex items-center gap-2 text-xs">
+          <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+          <span>
+            File is too large ({formattedSize}). Max size is {formattedMaxSize}.
+          </span>
+        </div>
+      )}
 
-        {/* Upload Progress Bar when active */}
-        {isUploading && (
-          <div className="mb-4 bg-indigo-50/70 border border-indigo-100 rounded-xl p-3 space-y-2">
-            <div className="flex items-center justify-between text-xs text-[#4f46e5] font-medium">
-              <span className="flex items-center gap-1.5">
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                Uploading raw video to server…
-              </span>
-              <span>{pctText}</span>
-            </div>
-            <div className="w-full h-1.5 bg-indigo-100 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-[#4f46e5] rounded-full transition-all duration-200"
-                style={{ width: pctText }}
-              />
-            </div>
+      {/* Upload Progress Bar if active */}
+      {isUploading && (
+        <div className="mt-4 p-3 bg-indigo-50/60 border border-indigo-100 rounded-xl space-y-1.5">
+          <div className="flex items-center justify-between text-xs font-semibold text-indigo-950">
+            <span>Uploading media chunks…</span>
+            <span className="font-mono">{pctText}</span>
           </div>
-        )}
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label
-              htmlFor="video-title-input"
-              className="block text-xs font-semibold text-[#1f1f1f] mb-1.5 uppercase tracking-wider"
-            >
-              Video Title
-            </label>
-            <input
-              id="video-title-input"
-              ref={inputRef}
-              type="text"
-              required
-              disabled={isUploading}
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              placeholder="e.g. Introduction to Quantum Computing"
-              className="w-full px-3.5 py-2.5 text-sm bg-white border border-[#d5d2cb] rounded-lg focus:outline-none focus:border-[#4f46e5] focus:ring-2 focus:ring-[#4f46e5]/20 text-[#1f1f1f] transition-all placeholder:text-[#a19f96] disabled:bg-zinc-50 disabled:text-zinc-500"
+          <div className="w-full bg-indigo-200/60 h-1.5 rounded-full overflow-hidden">
+            <div
+              className="bg-indigo-600 h-full rounded-full transition-all duration-150"
+              style={{ width: `${Math.round(uploadProgress * 100)}%` }}
             />
           </div>
+        </div>
+      )}
 
-          <div className="flex items-center justify-end gap-2.5 pt-2">
-            <button
-              type="button"
-              onClick={onCancel}
-              disabled={isUploading}
-              className="px-4 py-2 text-xs font-medium text-[#6b6b6b] hover:text-[#1f1f1f] bg-[#f5f4f0] hover:bg-[#eae7df] rounded-lg transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={isInvalid || !title.trim() || isUploading}
-              className="px-4 py-2 text-xs font-semibold text-white bg-[#4f46e5] hover:bg-[#4338ca] disabled:opacity-50 disabled:cursor-not-allowed rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
-            >
-              {isUploading ? (
-                <>
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  <span>Uploading ({pctText})…</span>
-                </>
-              ) : (
-                <>
-                  <Upload className="w-3.5 h-3.5" />
-                  <span>Upload & Transcode</span>
-                </>
-              )}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+      {/* Edit Title Form */}
+      <form onSubmit={handleSubmit} className="mt-4 space-y-4">
+        <div>
+          <label
+            htmlFor="video-title-input"
+            className="block text-xs font-semibold text-zinc-900 mb-1.5 uppercase tracking-wider"
+          >
+            Video Title
+          </label>
+          <input
+            id="video-title-input"
+            ref={inputRef}
+            type="text"
+            required
+            disabled={isUploading}
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="e.g. Introduction to Quantum Computing"
+            className="w-full px-3.5 py-2.5 text-sm bg-white border border-[#d5d1c7] rounded-xl focus:outline-none focus:border-indigo-600 focus:ring-2 focus:ring-indigo-500/20 text-zinc-900 transition-all placeholder:text-zinc-400 disabled:bg-zinc-50 disabled:text-zinc-500 shadow-2xs"
+          />
+        </div>
+
+        <div className="flex items-center justify-end gap-2.5 pt-2">
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={isUploading}
+            className="px-4 py-2 text-xs font-semibold text-zinc-700 hover:text-zinc-900 bg-[#f4f2ee] hover:bg-[#eae7df] rounded-xl transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={isInvalid || !title.trim() || isUploading}
+            className="px-4 py-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl flex items-center gap-1.5 transition-all cursor-pointer shadow-xs active:scale-95"
+          >
+            {isUploading ? (
+              <>
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                <span>Uploading ({pctText})…</span>
+              </>
+            ) : (
+              <>
+                <Upload className="w-3.5 h-3.5" />
+                <span>Upload & Transcode</span>
+              </>
+            )}
+          </button>
+        </div>
+      </form>
+    </Modal>
   );
 };

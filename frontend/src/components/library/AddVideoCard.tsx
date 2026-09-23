@@ -52,10 +52,10 @@ export const AddVideoCard: React.FC<AddVideoCardProps> = ({ onFileSelect }) => {
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
       onClick={() => fileInputRef.current?.click()}
-      className={`group relative rounded-xl border-2 border-dashed overflow-hidden transition-all duration-200 cursor-pointer flex flex-col select-none shadow-2xs ${
+      className={`group relative rounded-2xl border-2 border-dashed overflow-hidden transition-all duration-200 cursor-pointer flex flex-col select-none shadow-2xs ${
         isDragOver
-          ? "border-[#4f46e5] bg-indigo-50/50 scale-[1.02]"
-          : "border-[#d5d2cb] bg-white hover:border-[#4f46e5] hover:bg-[#faf9f6]"
+          ? "border-indigo-500 bg-indigo-50/50 scale-[1.01]"
+          : "border-[#d5d1c7] bg-white hover:border-indigo-500 hover:bg-[#faf9f7]"
       }`}
     >
       <input
@@ -68,17 +68,17 @@ export const AddVideoCard: React.FC<AddVideoCardProps> = ({ onFileSelect }) => {
 
       {/* Top area matching aspect-video of thumbnail */}
       <div className="relative aspect-video w-full flex flex-col items-center justify-center gap-2.5 p-4">
-        <div className="w-11 h-11 rounded-full bg-[#f0eee9] group-hover:bg-[#4f46e5] flex items-center justify-center transition-colors shadow-2xs">
-          <Plus className="w-5 h-5 text-[#1f1f1f] group-hover:text-white transition-colors" />
+        <div className="w-11 h-11 rounded-full bg-[#f4f2ee] group-hover:bg-indigo-600 flex items-center justify-center transition-colors shadow-2xs">
+          <Plus className="w-5 h-5 text-zinc-800 group-hover:text-white transition-colors" />
         </div>
-        <span className="text-[13.5px] font-semibold text-[#1f1f1f] group-hover:text-[#4f46e5] transition-colors">
+        <span className="text-[13.5px] font-semibold text-zinc-800 group-hover:text-indigo-600 transition-colors">
           Add new video
         </span>
       </div>
 
       {/* Bottom area matching metadata footer */}
-      <div className="p-3.5 flex flex-col justify-center flex-1 border-t border-dashed border-[#e2e0da] group-hover:border-[#4f46e5]/30 text-center bg-transparent">
-        <span className="text-[11px] text-[#8a8880]">
+      <div className="p-3.5 flex flex-col justify-center flex-1 border-t border-dashed border-[#e5e2db] group-hover:border-indigo-200 text-center bg-transparent">
+        <span className="text-[11px] text-zinc-400 font-medium">
           Click to browse or drop file
         </span>
       </div>

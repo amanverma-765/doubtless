@@ -2,6 +2,20 @@
 @import "@vidstack/react/player/styles/default/theme.css";
 @import "@vidstack/react/player/styles/default/layouts/video.css";
 
+@theme {
+  --font-sans: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-serif: "Newsreader", Georgia, Cambria, "Times New Roman", Times, serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+
+  /* Semantic Neutral Palette */
+  --color-surface-card: #ffffff;
+  --color-surface-subtle: #faf9f7;
+  --color-surface-muted: #f4f2ee;
+  --color-surface-canvas: #fcfbfa;
+  --color-border-subtle: #e5e2db;
+  --color-border-muted: #dcd9d2;
+}
+
 :root {
   --bar: 64px;
   --gap: 24px;
@@ -9,7 +23,7 @@
   --cardh: 56px;
   --accent: #4f46e5;
   --media-brand: #4f46e5;
-  --ink: #1f1f1f;
+  --ink: #191919;
   --muted: #6b6b6b;
   --tile: #f0eee9;
   --barmb: 8px;
@@ -27,8 +41,31 @@ html, body {
   padding: 0;
   background-color: #fcfbfa;
   color: var(--ink);
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
   overflow: hidden;
+}
+
+/* Slim elegant scrollbar */
+.thin-scrollbar::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+.thin-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.thin-scrollbar::-webkit-scrollbar-thumb {
+  background: #dcd9d2;
+  border-radius: 9999px;
+}
+.thin-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #c3bfb6;
+}
+.thin-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: #dcd9d2 transparent;
 }
 
 @media (max-width: 1024px) {
@@ -71,4 +108,28 @@ html, body {
 
 :where([data-media-player][data-ended] .vds-controls-group) {
   pointer-events: auto !important;
+}
+
+/* 3D Flip Card Animation Utilities */
+@utility perspective-1000 {
+  perspective: 1000px;
+}
+@utility transform-style-3d {
+  transform-style: preserve-3d;
+}
+@utility transform-style-preserve-3d {
+  transform-style: preserve-3d;
+}
+@utility backface-hidden {
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+@utility rotate-y-180 {
+  transform: rotateY(180deg);
+}
+@utility transform-front {
+  transform: rotateY(0deg) translateZ(1px);
+}
+@utility transform-back {
+  transform: rotateY(180deg) translateZ(1px);
 }

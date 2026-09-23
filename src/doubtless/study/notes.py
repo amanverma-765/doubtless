@@ -3,6 +3,7 @@
 import logging
 
 from pydantic_ai import Agent
+from pydantic_ai.settings import ModelSettings
 
 from doubtless.core.formatting import format_timestamp
 from doubtless.domain.schemas import (
@@ -60,6 +61,7 @@ notes_agent = Agent[None, VideoNotesPayload](
     model=ai_model,
     output_type=VideoNotesPayload,
     system_prompt=_SYSTEM_PROMPT,
+    model_settings=ModelSettings(temperature=0.1, timeout=90.0),
 )
 
 

@@ -10,14 +10,12 @@ def format_lecture_context(
     chapter_header: str = "[CHAPTER OUTLINE]:",
 ) -> str:
     """Combine chapter outline and transcript text into structured prompt context."""
-    chapter_lines: list[str] = [chapter_header]
-    for c in chapters:
-        ts = format_timestamp(c.start_time)
-        chapter_lines.append(f"- [{ts}] {c.title}: {c.description}")
-
-    transcript_lines: list[str] = ["\n[LECTURE TRANSCRIPT]:"]
-    for s in segments:
-        ts = format_timestamp(s.start)
-        transcript_lines.append(f"[{ts}] {s.text}")
-
+    # ponytail: clean list comprehensions instead of imperative append loops
+    chapter_lines = [chapter_header] + [
+        f"- [{format_timestamp(c.start_time)}] {c.title}: {c.description}"
+        for c in chapters
+    ]
+    transcript_lines = ["\n[LECTURE TRANSCRIPT]:"] + [
+        f"[{format_timestamp(s.start)}] {s.text}" for s in segments
+    ]
     return "\n".join(chapter_lines + transcript_lines)

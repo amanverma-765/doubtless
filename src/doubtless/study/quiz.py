@@ -3,6 +3,7 @@
 import logging
 
 from pydantic_ai import Agent
+from pydantic_ai.settings import ModelSettings
 
 from doubtless.domain.schemas import (
     QuizPayload,
@@ -19,7 +20,7 @@ logger = logging.getLogger(__name__)
 _SYSTEM_PROMPT = """You are an expert tutor creating multiple-choice quiz questions.
 
 Analyze the timestamped lecture transcript and chapter outline to generate
-4 to 8 conceptual quiz questions testing student comprehension.
+up to 15 conceptual quiz questions (typically 8 to 15) testing student comprehension.
 
 Grounding in Lecture Content:
 - Every question MUST test a concept, formula, derivation, or problem
@@ -30,8 +31,7 @@ Grounding in Lecture Content:
 
 Option Balance and Anti-Bias:
 - Distribute `correct_index` evenly across 0, 1, 2, and 3 (options A, B, C, D):
-  * In a 4-question quiz, use each index [0, 1, 2, 3] once in varied order.
-  * In a 6-to-8 question quiz, ensure all four indices are represented equally.
+  * Ensure all four indices are represented in roughly equal proportions.
   * Never place the correct answer predominantly at index 0 or 1.
 - Provide exactly 4 plausible, distinct options of similar length and phrasing.
 - NEVER use "All of the above", "None of the above", or "Both A and B".
@@ -51,6 +51,7 @@ quiz_agent = Agent[None, QuizPayload](
     model=ai_model,
     output_type=QuizPayload,
     system_prompt=_SYSTEM_PROMPT,
+    model_settings=ModelSettings(temperature=0.1, timeout=60.0),
 )
 
 
@@ -66,7 +67,7 @@ def generate_quiz(
 
     context_text = format_lecture_context(segments, chapters)
     prompt = (
-        "Generate 4 to 8 multiple-choice quiz questions with explanations "
+        "Generate up to 15 multiple-choice quiz questions (8 to 15) with explanations "
         f"and timestamps based on the following lecture:\n\n{context_text}"
     )
 

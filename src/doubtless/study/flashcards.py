@@ -3,6 +3,7 @@
 import logging
 
 from pydantic_ai import Agent
+from pydantic_ai.settings import ModelSettings
 
 from doubtless.domain.schemas import (
     Flashcard,
@@ -18,8 +19,8 @@ logger = logging.getLogger(__name__)
 
 _SYSTEM_PROMPT = """You are an academic tutor creating revision flashcards.
 
-Analyze the transcript and chapter markers to extract 6 to 12 atomic revision
-flashcards grounded directly in the teacher's lesson.
+Analyze the transcript and chapter markers to extract up to 20 atomic revision
+flashcards (typically 10 to 20) grounded directly in the teacher's lesson.
 
 Grounding in Lecture Content:
 - Extract atomic facts, key terms, formulas, definitions, and teacher shortcuts
@@ -48,6 +49,7 @@ flashcards_agent = Agent[None, FlashcardsPayload](
     model=ai_model,
     output_type=FlashcardsPayload,
     system_prompt=_SYSTEM_PROMPT,
+    model_settings=ModelSettings(temperature=0.1, timeout=60.0),
 )
 
 
@@ -63,8 +65,8 @@ def generate_flashcards(
 
     context_text = format_lecture_context(segments, chapters)
     prompt = (
-        "Extract 6 to 12 atomic revision flashcards covering key definitions, "
-        f"formulas, and concepts from the following lecture:\n\n{context_text}"
+        "Extract up to 20 atomic revision flashcards (10 to 20) covering key "
+        f"definitions, formulas, and concepts from the lecture:\n\n{context_text}"
     )
 
     try:

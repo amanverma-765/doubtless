@@ -116,12 +116,13 @@ def transcode_with_progress(
     out_dir: Path,
     on_progress: Callable[[float], None],
     should_stop: Callable[[], bool],
+    info: MediaProbe | None = None,
 ) -> None:
     """Run FFmpeg to completion, reporting progress, aborting if stopped."""
-    info = probe_video(src)
+    probe_info: MediaProbe = info if info is not None else probe_video(src)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    cmd = _build_transcode_command(src, out_dir, info)
+    cmd = _build_transcode_command(src, out_dir, probe_info)
 
     # Use a temporary file for stderr to avoid OS pipe deadlock on verbose warnings
     with tempfile.TemporaryFile() as stderr_file:
@@ -157,9 +158,13 @@ def transcode_with_progress(
                         return
 
                 key, _, value = line.strip().partition(b"=")
-                if key == b"out_time_us" and value.isdigit() and info.duration > 0:
+                if (
+                    key == b"out_time_us"
+                    and value.isdigit()
+                    and probe_info.duration > 0
+                ):
                     elapsed_seconds = int(value) / 1e6
-                    fraction = min(1.0, elapsed_seconds / info.duration)
+                    fraction = min(1.0, elapsed_seconds / probe_info.duration)
                     on_progress(fraction)
 
             return_code = proc.wait()

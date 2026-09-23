@@ -1,7 +1,7 @@
 """Asynchronous Celery tasks for media transcoding, transcription, and indexing."""
 
 import concurrent.futures
-import contextlib
+import logging
 import shutil
 from pathlib import Path
 from typing import Any
@@ -12,12 +12,29 @@ from doubtless.media.transcriber import extract_audio, transcribe_audio
 from doubtless.rag.lecture.chunker import chunk_transcript
 from doubtless.rag.lecture.indexer import index_lecture_chunks
 from doubtless.storage import db, file_storage, redis_store
-from doubtless.storage.vector_store import delete_lecture_vectors
+from doubtless.storage.cascade_delete import cascade_delete_video
 from doubtless.study.chapteriser import generate_chapters
 from doubtless.study.flashcards import generate_flashcards
 from doubtless.study.notes import generate_notes
 from doubtless.study.quiz import generate_quiz
 from doubtless.worker.celery_app import celery_app
+
+_logger = logging.getLogger(__name__)
+
+
+STAGE_PROGRESS_RANGES: dict[str, tuple[float, float]] = {
+    "transcoding": (0.00, 0.25),
+    "transcribing": (0.25, 0.70),
+    "indexing": (0.70, 0.85),
+    "generating_notes": (0.85, 1.00),
+}
+
+
+def calc_overall_progress(stage: str, stage_progress: float) -> float:
+    """Map local stage progress monotonically into overall pipeline progress."""
+    start, end = STAGE_PROGRESS_RANGES.get(stage, (0.0, 1.0))
+    clamped = min(1.0, max(0.0, stage_progress))
+    return round(start + clamped * (end - start), 4)
 
 
 @celery_app.task(bind=True)
@@ -28,6 +45,15 @@ def transcode_video(
 ) -> dict[str, Any]:
     """Execute HLS transcoding, audio transcription, and vector indexing."""
     src_path = Path(src)
+    if not src_path.is_file():
+        _logger.info(
+            "Source file %s no longer exists on disk (video deleted/cancelled). "
+            "Skipping task for video %s.",
+            src_path,
+            video_id,
+        )
+        return {"cancelled": True}
+
     out = file_storage.hls_dir(video_id)
     shutil.rmtree(out, ignore_errors=True)
     out.mkdir(parents=True, exist_ok=True)
@@ -42,26 +68,31 @@ def transcode_video(
         stage: str = "transcoding",
         message: str = "",
     ) -> None:
-        clamped = min(1.0, max(0.0, p))
+        overall = calc_overall_progress(stage, p)
         self.update_state(
             state="PROGRESS",
-            meta={"progress": clamped, "stage": stage, "message": message},
+            meta={
+                "progress": overall,
+                "stage": stage,
+                "stage_progress": min(1.0, max(0.0, p)),
+                "message": message,
+            },
         )
         redis_store.set_transcode_progress(
-            video_id, clamped, stage=stage, message=message
+            video_id, overall, stage=stage, message=message
         )
 
     def _cleanup_cancelled() -> dict[str, Any]:
         audio_wav.unlink(missing_ok=True)
-        shutil.rmtree(out, ignore_errors=True)
-        delete_lecture_vectors(video_id)
-        db.delete_video(video_id)
-        redis_store.delete_transcode_progress(video_id)
+        cascade_delete_video(video_id)
         redis_store.clear_cancellation(video_id)
         return {"cancelled": True}
 
     try:
-        # Phase 1: Poster extraction & HLS transcoding (transcoding 0% -> 100%)
+        # Probe media file once for duration and streams
+        media_info = probe_video(src_path)
+
+        # Phase 1: Poster extraction & HLS transcoding (transcoding 0% -> 25%)
         _update_progress(
             0.0, stage="transcoding", message="Preparing video transcoding…"
         )
@@ -71,7 +102,7 @@ def transcode_video(
             _update_progress(
                 p,
                 stage="transcoding",
-                message=f"Transcoding video {int(p * 100)}%",
+                message="Transcoding video (HLS)",
             )
 
         transcode_with_progress(
@@ -79,31 +110,34 @@ def transcode_video(
             out,
             on_progress=_on_hls_prog,
             should_stop=_is_cancelled,
+            info=media_info,
         )
 
         if _is_cancelled():
             return _cleanup_cancelled()
 
-        _update_progress(1.0, stage="transcoding", message="Transcoding complete 100%")
+        _update_progress(1.0, stage="transcoding", message="Transcoding complete")
 
-        # Phase 2: Audio extraction & Whisper transcription (transcribing 0% -> 100%)
+        # Phase 2: Audio extraction & Whisper transcription (transcribing 25% -> 70%)
         _update_progress(0.0, stage="transcribing", message="Extracting audio track…")
-        has_audio = extract_audio(src_path, audio_wav)
+        has_audio = extract_audio(
+            src_path,
+            audio_wav,
+            has_audio=media_info.acodec is not None,
+        )
 
         if _is_cancelled():
             return _cleanup_cancelled()
 
         segments = []
         if has_audio and audio_wav.is_file():
-            duration = 0.0
-            with contextlib.suppress(Exception):
-                duration = probe_video(src_path).duration
+            duration = media_info.duration
 
             def _on_whisper_prog(p: float) -> None:
                 _update_progress(
                     p,
                     stage="transcribing",
-                    message=f"Transcribing speech with AI {int(p * 100)}%",
+                    message="Transcribing speech with AI (GPU)",
                 )
 
             segments = transcribe_audio(
@@ -117,11 +151,9 @@ def transcode_video(
         if _is_cancelled():
             return _cleanup_cancelled()
 
-        _update_progress(
-            1.0, stage="transcribing", message="Transcription complete 100%"
-        )
+        _update_progress(1.0, stage="transcribing", message="Transcription complete")
 
-        # Phase 3: Semantic indexing (indexing 0% -> 100%)
+        # Phase 3: Semantic indexing (indexing 70% -> 85%)
         _update_progress(0.0, stage="indexing", message="Saving transcript segments…")
         if segments:
             db.insert_transcripts(video_id, segments)
@@ -130,21 +162,24 @@ def transcode_video(
             return _cleanup_cancelled()
 
         if segments:
-            _update_progress(0.3, stage="indexing", message="Creating semantic chunks…")
+            _update_progress(0.1, stage="indexing", message="Creating semantic chunks…")
             chunks = chunk_transcript(video_id, segments)
-            _update_progress(
-                0.6,
-                stage="indexing",
-                message="Embedding & indexing lecture vectors…",
-            )
-            index_lecture_chunks(chunks)
+
+            def _on_index_prog(p: float) -> None:
+                _update_progress(
+                    p,
+                    stage="indexing",
+                    message="Indexing lecture vectors",
+                )
+
+            index_lecture_chunks(chunks, on_progress=_on_index_prog)
 
         if _is_cancelled():
             return _cleanup_cancelled()
 
-        _update_progress(1.0, stage="indexing", message="Indexing complete 100%")
+        _update_progress(1.0, stage="indexing", message="Indexing complete")
 
-        # Phase 4: Chapterisation, Notes, Quiz & Cards (0% -> 100%)
+        # Phase 4: Chapterisation, Notes, Quiz & Cards (generating_notes 85% -> 100%)
         _update_progress(
             0.0, stage="generating_notes", message="Generating topic chapters…"
         )

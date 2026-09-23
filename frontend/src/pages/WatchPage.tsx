@@ -1,11 +1,12 @@
 import type React from "react";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { AlertCircle, ChevronLeft } from "lucide-react";
+import type { MediaPlayerInstance } from "@vidstack/react";
 import { TopBar } from "@/components/layout/TopBar";
 import { VideoSection } from "@/components/player/VideoSection";
 import { FeatureCards } from "@/components/player/FeatureCards";
-import { RightPanel } from "@/components/chat/RightPanel";
+import { RightPanel } from "@/components/studio/RightPanel";
 import { UploadModal } from "@/components/upload/UploadModal";
 import { useVideoStatus } from "@/hooks/useVideoStatus";
 import { useVideoUpload } from "@/hooks/useVideoUpload";
@@ -16,8 +17,17 @@ export const WatchPage: React.FC = () => {
   const { id: videoId } = useParams<{ id: string }>();
   const navigate = useNavigate();
 
+  const playerRef = useRef<MediaPlayerInstance | null>(null);
+  const [currentTime, setCurrentTime] = useState<number>(0);
   const [videoTitle, setVideoTitle] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<FeatureTabKey>("doubt");
+
+  const handleSeek = useCallback((seconds: number) => {
+    if (playerRef.current) {
+      playerRef.current.currentTime = seconds;
+      playerRef.current.play();
+    }
+  }, []);
 
   const { status, isNotFound } = useVideoStatus(videoId);
 
@@ -66,15 +76,15 @@ export const WatchPage: React.FC = () => {
         <TopBar onFileSelect={selectFile} showBack={true} />
         <div className="flex-1 flex flex-col items-center justify-center p-6 text-center">
           <AlertCircle className="w-12 h-12 text-zinc-400 mb-3" />
-          <h2 className="text-xl font-semibold text-[#1f1f1f] mb-1">
+          <h2 className="text-xl font-semibold text-zinc-900 mb-1">
             Video Not Found
           </h2>
-          <p className="text-sm text-[#6b6b6b] mb-6 max-w-sm">
+          <p className="text-sm text-zinc-500 mb-6 max-w-sm">
             The video you are trying to watch does not exist or has been removed.
           </p>
           <Link
             to="/"
-            className="inline-flex items-center gap-2 px-5 py-2.5 text-xs font-semibold text-white bg-[#4f46e5] hover:bg-[#4338ca] rounded-full transition-colors shadow-xs"
+            className="inline-flex items-center gap-2 px-5 py-2.5 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-full transition-all shadow-sm active:scale-95"
           >
             <ChevronLeft className="w-4 h-4" />
             <span>Return to Library</span>
@@ -116,6 +126,8 @@ export const WatchPage: React.FC = () => {
               localUploadProgress={null}
               onFileSelect={selectFile}
               videoTitle={videoTitle || undefined}
+              playerRef={playerRef}
+              onTimeUpdate={setCurrentTime}
             />
           </div>
 
@@ -126,7 +138,13 @@ export const WatchPage: React.FC = () => {
 
         {/* Right Column: Pinned Side Panel */}
         <div className="w-full lg:w-[var(--panel)] h-full shrink-0">
-          <RightPanel activeTab={activeTab} videoId={videoId || null} />
+          <RightPanel
+            activeTab={activeTab}
+            videoId={videoId || null}
+            currentTime={currentTime}
+            onSeek={handleSeek}
+            status={status}
+          />
         </div>
       </main>
 

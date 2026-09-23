@@ -5,6 +5,7 @@ import gc
 import logging
 import subprocess
 from collections.abc import Callable
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -16,38 +17,36 @@ from doubtless.media.probe import MediaError, has_audio_stream
 _logger = logging.getLogger(__name__)
 
 _WHISPER_MODEL_SIZE = "medium"
+# Domain cues without language name tokens to prevent repetition collapse
 _HINGLISH_PROMPT = (
-    "Yeh ek educational video lecture hai on Physics, Chemistry, Mathematics, "
-    "and exam preparation. Hindi aur English dono bhashayein use hoti hain with "
-    "technical terms like velocity, acceleration, formula, equation, roadmap, strategy."
+    "Video lecture on Physics, Chemistry, Mathematics, exam questions, formulas, "
+    "equations, velocity, acceleration, reactions, solutions, and derivations."
 )
 
-_whisper_model_cache: dict[tuple[str, str], Any] = {}
 
-
+@lru_cache(maxsize=2)
 def load_whisper_model(device: str = "cpu", compute_type: str = "int8") -> Any:
     """Retrieve or load a cached WhisperModel for the device and precision."""
-    key = (device, compute_type)
-    if key in _whisper_model_cache:
-        return _whisper_model_cache[key]
-
     from faster_whisper import WhisperModel  # type: ignore[import-untyped]
 
-    model = WhisperModel(
+    return WhisperModel(
         _WHISPER_MODEL_SIZE,
         device=device,
         compute_type=compute_type,
     )
-    _whisper_model_cache[key] = model
-    return model
 
 
-def extract_audio(video_path: Path, output_wav: Path) -> bool:
+def extract_audio(
+    video_path: Path,
+    output_wav: Path,
+    has_audio: bool | None = None,
+) -> bool:
     """Extract audio track as 16kHz mono 16-bit PCM WAV.
 
     Returns True if audio extracted successfully, False if no audio stream exists.
     """
-    if not has_audio_stream(video_path):
+    audio_present = has_audio if has_audio is not None else has_audio_stream(video_path)
+    if not audio_present:
         return False
 
     output_wav.parent.mkdir(parents=True, exist_ok=True)
@@ -96,7 +95,7 @@ def _run_transcription(
         batched_model = BatchedInferencePipeline(model=model)
         segments_gen, info = batched_model.transcribe(
             str(audio_path),
-            batch_size=16,
+            batch_size=4,
             beam_size=1,
             initial_prompt=_HINGLISH_PROMPT,
             vad_filter=True,
@@ -111,6 +110,7 @@ def _run_transcription(
             str(audio_path),
             initial_prompt=_HINGLISH_PROMPT,
             beam_size=1,
+            condition_on_previous_text=False,
             vad_filter=True,
             vad_parameters=vad_params,
         )
@@ -124,6 +124,13 @@ def _run_transcription(
 
         text = seg.text.strip()
         if text:
+            lower = text.lower().strip(".,?![]()")
+            if lower in ("hindi", "english", "urdu", "subtitles by", "captioning by"):
+                continue
+            words = text.split()
+            if len(words) > 5 and len(set(words)) == 1:
+                continue
+
             results.append(
                 TranscriptSegment(
                     start=round(float(seg.start), 2),
@@ -133,8 +140,7 @@ def _run_transcription(
             )
 
         if on_progress and duration > 0:
-            prog = min(1.0, max(0.0, float(seg.end) / duration))
-            on_progress(prog)
+            on_progress(min(1.0, float(seg.end) / duration))
 
     return results
 
@@ -168,7 +174,7 @@ def transcribe_audio(
                 exc,
                 exc_info=True,
             )
-            _whisper_model_cache.pop(("cuda", "int8_float16"), None)
+            load_whisper_model.cache_clear()
             gc.collect()
             with contextlib.suppress(Exception):
                 torch.cuda.empty_cache()

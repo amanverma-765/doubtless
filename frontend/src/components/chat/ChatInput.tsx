@@ -5,9 +5,14 @@ import { Send } from "lucide-react";
 interface ChatInputProps {
   onSend: (message: string) => void;
   disabled?: boolean;
+  placeholder?: string;
 }
 
-export const ChatInput: React.FC<ChatInputProps> = ({ onSend, disabled }) => {
+export const ChatInput: React.FC<ChatInputProps> = ({
+  onSend,
+  disabled,
+  placeholder = "Ask a doubt about this video… (Shift+Enter for newline)",
+}) => {
   const [input, setInput] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -45,25 +50,32 @@ export const ChatInput: React.FC<ChatInputProps> = ({ onSend, disabled }) => {
   return (
     <form
       onSubmit={handleSubmit}
-      className="p-3 bg-white border-t border-[#e2e0da] flex items-end gap-2"
+      className="p-3 bg-white border-t border-[#e5e2db] flex flex-col gap-1.5"
     >
-      <textarea
-        ref={textareaRef}
-        rows={1}
-        value={input}
-        onChange={(e) => setInput(e.target.value)}
-        onKeyDown={handleKeyDown}
-        placeholder="Ask a doubt about this video… (Shift+Enter for newline)"
-        disabled={disabled}
-        className="flex-1 text-[13.5px] px-3.5 py-2 rounded-lg border border-[#d5d2cb] bg-white text-[#1f1f1f] placeholder:text-[#8a8880] focus:outline-none focus:border-[#4f46e5] focus:ring-1 focus:ring-[#4f46e5] transition-colors disabled:opacity-50 resize-none max-h-[120px] leading-relaxed"
-      />
-      <button
-        type="submit"
-        disabled={!input.trim() || disabled}
-        className="h-[38px] px-3.5 rounded-lg bg-[#4f46e5] text-white hover:bg-[#4338ca] disabled:opacity-40 disabled:cursor-not-allowed transition-colors flex items-center justify-center cursor-pointer shadow-xs shrink-0"
-      >
-        <Send className="w-4 h-4" />
-      </button>
+      <div className="flex items-end gap-2 bg-[#faf9f7] border border-[#d5d1c7] rounded-xl p-1.5 focus-within:border-indigo-500 focus-within:ring-2 focus-within:ring-indigo-500/20 focus-within:bg-white transition-all shadow-2xs">
+        <textarea
+          ref={textareaRef}
+          rows={1}
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={handleKeyDown}
+          placeholder={placeholder}
+          disabled={disabled}
+          className="flex-1 text-[13.5px] px-2.5 py-1 bg-transparent text-zinc-900 placeholder:text-zinc-400 focus:outline-none disabled:opacity-50 resize-none max-h-[120px] leading-relaxed"
+        />
+        <button
+          type="submit"
+          disabled={!input.trim() || disabled}
+          className="h-8 w-8 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 active:scale-95 disabled:opacity-30 disabled:cursor-not-allowed transition-all flex items-center justify-center cursor-pointer shadow-2xs shrink-0"
+          title="Send message (Enter)"
+        >
+          <Send className="w-3.5 h-3.5" />
+        </button>
+      </div>
+      <div className="flex items-center justify-between px-1 text-[10.5px] text-zinc-400 select-none">
+        <span>Shift+Enter for new line</span>
+        <span>Enter to send</span>
+      </div>
     </form>
   );
 };

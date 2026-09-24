@@ -19,7 +19,8 @@ from doubtless.api.routers import (
     study_router,
     video_router,
 )
-from doubtless.config import CORS_ORIGINS, HLS_DIR
+from doubtless.config import CORS_ORIGINS, HLS_DIR, LOGFIRE_SERVICE_NAME
+from doubtless.core.telemetry import init_telemetry
 from doubtless.storage import file_storage
 from doubtless.storage.db import init_db
 
@@ -82,6 +83,8 @@ def create_app() -> FastAPI:
         version="1.0.0",
         lifespan=_lifespan,
     )
+
+    init_telemetry(service_name=LOGFIRE_SERVICE_NAME, app=app)
 
     # CORS middleware
     app.add_middleware(

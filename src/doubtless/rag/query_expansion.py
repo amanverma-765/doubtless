@@ -31,6 +31,7 @@ class ExpandedQueriesPayload(BaseModel):
 
 _expander_agent = Agent[None, ExpandedQueriesPayload](
     model=ai_model,
+    name="query_expander",
     output_type=ExpandedQueriesPayload,
     system_prompt=_EXPANSION_SYSTEM_PROMPT,
     model_settings=ModelSettings(temperature=0.0, timeout=15.0),

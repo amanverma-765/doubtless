@@ -33,3 +33,23 @@ CORS_ORIGINS: list[str] = [
 AI_MODEL_NAME = os.getenv("AI_MODEL_NAME", "cx/gpt-5.6-luna")
 AI_BASE_URL = os.getenv("AI_BASE_URL", "http://localhost:20128/v1")
 AI_API_KEY = os.getenv("NINEROUTER_API_KEY") or os.getenv("OPENAI_API_KEY", "")
+
+# Observability (Logfire) configuration
+LOGFIRE_TOKEN: str | None = os.getenv("LOGFIRE_TOKEN") or None
+LOGFIRE_SERVICE_NAME: str = os.getenv("LOGFIRE_SERVICE_NAME", "doubtless-api")
+LOGFIRE_WORKER_SERVICE_NAME: str = os.getenv(
+    "LOGFIRE_WORKER_SERVICE_NAME", "doubtless-worker"
+)
+LOGFIRE_ENVIRONMENT: str = os.getenv(
+    "LOGFIRE_ENVIRONMENT", os.getenv("ENVIRONMENT", "development")
+)
+
+_send_raw = os.getenv("LOGFIRE_SEND_TO_LOGFIRE", "if-token-present").strip().lower()
+if _send_raw in ("false", "0", "off", "no"):
+    LOGFIRE_SEND_TO_LOGFIRE: bool | str = False
+elif _send_raw in ("true", "1", "on", "yes"):
+    LOGFIRE_SEND_TO_LOGFIRE = True
+else:
+    LOGFIRE_SEND_TO_LOGFIRE = "if-token-present"
+
+LOGFIRE_EXCLUDED_URLS: str = os.getenv("LOGFIRE_EXCLUDED_URLS", ".*/health.*|.*/hls/.*")

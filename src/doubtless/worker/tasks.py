@@ -6,6 +6,8 @@ import shutil
 from pathlib import Path
 from typing import Any
 
+import logfire
+
 from doubtless.media.probe import probe_video
 from doubtless.media.transcoder import extract_poster, transcode_with_progress
 from doubtless.media.transcriber import extract_audio, transcribe_audio
@@ -89,147 +91,172 @@ def transcode_video(
         return {"cancelled": True}
 
     try:
-        # Probe media file once for duration and streams
-        media_info = probe_video(src_path)
+        with logfire.span("pipeline.process_video", video_id=video_id, src=src):
+            # Probe media file once for duration and streams
+            with logfire.span("pipeline.probe", video_id=video_id):
+                media_info = probe_video(src_path)
 
-        # Phase 1: Poster extraction & HLS transcoding (transcoding 0% -> 25%)
-        _update_progress(
-            0.0, stage="transcoding", message="Preparing video transcoding…"
-        )
-        extract_poster(src_path, out / "poster.jpg")
-
-        def _on_hls_prog(p: float) -> None:
+            # Phase 1: Poster extraction & HLS transcoding (transcoding 0% -> 25%)
             _update_progress(
-                p,
-                stage="transcoding",
-                message="Transcoding video (HLS)",
+                0.0, stage="transcoding", message="Preparing video transcoding…"
             )
+            with logfire.span("pipeline.transcode_hls", video_id=video_id):
+                extract_poster(src_path, out / "poster.jpg")
 
-        transcode_with_progress(
-            src_path,
-            out,
-            on_progress=_on_hls_prog,
-            should_stop=_is_cancelled,
-            info=media_info,
-        )
+                def _on_hls_prog(p: float) -> None:
+                    _update_progress(
+                        p,
+                        stage="transcoding",
+                        message="Transcoding video (HLS)",
+                    )
 
-        if _is_cancelled():
-            return _cleanup_cancelled()
-
-        _update_progress(1.0, stage="transcoding", message="Transcoding complete")
-
-        # Phase 2: Audio extraction & Whisper transcription (transcribing 25% -> 70%)
-        _update_progress(0.0, stage="transcribing", message="Extracting audio track…")
-        has_audio = extract_audio(
-            src_path,
-            audio_wav,
-            has_audio=media_info.acodec is not None,
-        )
-
-        if _is_cancelled():
-            return _cleanup_cancelled()
-
-        segments = []
-        if has_audio and audio_wav.is_file():
-            duration = media_info.duration
-
-            def _on_whisper_prog(p: float) -> None:
-                _update_progress(
-                    p,
-                    stage="transcribing",
-                    message="Transcribing speech with AI (GPU)",
+                transcode_with_progress(
+                    src_path,
+                    out,
+                    on_progress=_on_hls_prog,
+                    should_stop=_is_cancelled,
+                    info=media_info,
                 )
 
-            segments = transcribe_audio(
-                audio_wav,
-                total_duration=duration,
-                on_progress=_on_whisper_prog,
-                should_stop=_is_cancelled,
+            if _is_cancelled():
+                return _cleanup_cancelled()
+
+            _update_progress(1.0, stage="transcoding", message="Transcoding complete")
+
+            # Phase 2: Audio extraction & Whisper transcription (25% -> 70%)
+            _update_progress(
+                0.0, stage="transcribing", message="Extracting audio track…"
             )
-            audio_wav.unlink(missing_ok=True)
-
-        if _is_cancelled():
-            return _cleanup_cancelled()
-
-        _update_progress(1.0, stage="transcribing", message="Transcription complete")
-
-        # Phase 3: Semantic indexing (indexing 70% -> 85%)
-        _update_progress(0.0, stage="indexing", message="Saving transcript segments…")
-        if segments:
-            db.insert_transcripts(video_id, segments)
-
-        if _is_cancelled():
-            return _cleanup_cancelled()
-
-        if segments:
-            _update_progress(0.1, stage="indexing", message="Creating semantic chunks…")
-            chunks = chunk_transcript(video_id, segments)
-
-            def _on_index_prog(p: float) -> None:
-                _update_progress(
-                    p,
-                    stage="indexing",
-                    message="Indexing lecture vectors",
+            with logfire.span("pipeline.transcribe", video_id=video_id):
+                has_audio = extract_audio(
+                    src_path,
+                    audio_wav,
+                    has_audio=media_info.acodec is not None,
                 )
 
-            index_lecture_chunks(chunks, on_progress=_on_index_prog)
+                if _is_cancelled():
+                    return _cleanup_cancelled()
 
-        if _is_cancelled():
-            return _cleanup_cancelled()
+                segments = []
+                if has_audio and audio_wav.is_file():
+                    duration = media_info.duration
 
-        _update_progress(1.0, stage="indexing", message="Indexing complete")
+                    def _on_whisper_prog(p: float) -> None:
+                        _update_progress(
+                            p,
+                            stage="transcribing",
+                            message="Transcribing speech with AI (GPU)",
+                        )
 
-        # Phase 4: Chapterisation, Notes, Quiz & Cards (generating_notes 85% -> 100%)
-        _update_progress(
-            0.0, stage="generating_notes", message="Generating topic chapters…"
-        )
-        chapters = generate_chapters(video_id, segments) if segments else []
+                    segments = transcribe_audio(
+                        audio_wav,
+                        total_duration=duration,
+                        on_progress=_on_whisper_prog,
+                        should_stop=_is_cancelled,
+                    )
+                    audio_wav.unlink(missing_ok=True)
 
-        if _is_cancelled():
-            return _cleanup_cancelled()
+            if _is_cancelled():
+                return _cleanup_cancelled()
 
-        _update_progress(
-            0.30,
-            stage="generating_notes",
-            message="Generating study notes, quiz & flashcards…",
-        )
-
-        with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
-            future_notes = executor.submit(generate_notes, video_id, segments, chapters)
-            future_quiz = executor.submit(generate_quiz, video_id, segments, chapters)
-            future_cards = executor.submit(
-                generate_flashcards, video_id, segments, chapters
+            _update_progress(
+                1.0, stage="transcribing", message="Transcription complete"
             )
 
-            future_notes.result()
-            quiz_questions = future_quiz.result() or []
-            flashcards = future_cards.result() or []
+            # Phase 3: Semantic indexing (indexing 70% -> 85%)
+            _update_progress(
+                0.0, stage="indexing", message="Saving transcript segments…"
+            )
+            with logfire.span(
+                "pipeline.index_chunks", video_id=video_id, segment_count=len(segments)
+            ):
+                if segments:
+                    db.insert_transcripts(video_id, segments)
 
-        if _is_cancelled():
-            return _cleanup_cancelled()
+                if _is_cancelled():
+                    return _cleanup_cancelled()
 
-        _update_progress(1.0, stage="generating_notes", message="Finalizing lecture…")
+                if segments:
+                    _update_progress(
+                        0.1, stage="indexing", message="Creating semantic chunks…"
+                    )
+                    chunks = chunk_transcript(video_id, segments)
 
-        # Complete: Mark video ready
-        playlist = file_storage.playlist_url(video_id)
-        poster = file_storage.poster_url(video_id)
-        db.update_video(
-            video_id,
-            status="ready",
-            playlist=playlist,
-            poster=poster,
-        )
-        redis_store.delete_transcode_progress(video_id)
-        return {
-            "playlist": playlist,
-            "poster": poster,
-            "segments_count": len(segments),
-            "chapters_count": len(chapters),
-            "quiz_count": len(quiz_questions),
-            "flashcards_count": len(flashcards),
-        }
+                    def _on_index_prog(p: float) -> None:
+                        _update_progress(
+                            p,
+                            stage="indexing",
+                            message="Indexing lecture vectors",
+                        )
+
+                    index_lecture_chunks(chunks, on_progress=_on_index_prog)
+
+            if _is_cancelled():
+                return _cleanup_cancelled()
+
+            _update_progress(1.0, stage="indexing", message="Indexing complete")
+
+            # Phase 4: Chapters, Notes, Quiz & Cards (generating_notes 85% -> 100%)
+            _update_progress(
+                0.0, stage="generating_notes", message="Generating topic chapters…"
+            )
+            with logfire.span("pipeline.study_generation", video_id=video_id):
+                chapters = generate_chapters(video_id, segments) if segments else []
+
+                if _is_cancelled():
+                    return _cleanup_cancelled()
+
+                _update_progress(
+                    0.30,
+                    stage="generating_notes",
+                    message="Generating study notes, quiz & flashcards…",
+                )
+
+                with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
+                    future_notes = executor.submit(
+                        generate_notes, video_id, segments, chapters
+                    )
+                    future_quiz = executor.submit(
+                        generate_quiz, video_id, segments, chapters
+                    )
+                    future_cards = executor.submit(
+                        generate_flashcards, video_id, segments, chapters
+                    )
+
+                    future_notes.result()
+                    quiz_questions = future_quiz.result() or []
+                    flashcards = future_cards.result() or []
+
+            if _is_cancelled():
+                return _cleanup_cancelled()
+
+            _update_progress(
+                1.0, stage="generating_notes", message="Finalizing lecture…"
+            )
+
+            # Complete: Mark video ready
+            playlist = file_storage.playlist_url(video_id)
+            poster = file_storage.poster_url(video_id)
+            db.update_video(
+                video_id,
+                status="ready",
+                playlist=playlist,
+                poster=poster,
+            )
+            redis_store.delete_transcode_progress(video_id)
+            return {
+                "playlist": playlist,
+                "poster": poster,
+                "segments_count": len(segments),
+                "chapters_count": len(chapters),
+                "quiz_count": len(quiz_questions),
+                "flashcards_count": len(flashcards),
+            }
 
     except Exception as exc:
+        logfire.exception(
+            "Video processing failed: {error}", error=str(exc), video_id=video_id
+        )
         audio_wav.unlink(missing_ok=True)
         db.update_video(
             video_id,

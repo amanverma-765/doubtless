@@ -9,6 +9,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
+import logfire
 import torch
 
 from doubtless.domain.schemas import TranscriptSegment
@@ -49,30 +50,33 @@ def extract_audio(
     if not audio_present:
         return False
 
-    output_wav.parent.mkdir(parents=True, exist_ok=True)
-    cmd = [
-        "ffmpeg",
-        "-y",
-        "-v",
-        "error",
-        "-i",
-        str(video_path),
-        "-vn",
-        "-acodec",
-        "pcm_s16le",
-        "-ar",
-        "16000",
-        "-ac",
-        "1",
-        str(output_wav),
-    ]
+    with logfire.span(
+        "audio.extract", video_path=str(video_path), output_wav=str(output_wav)
+    ):
+        output_wav.parent.mkdir(parents=True, exist_ok=True)
+        cmd = [
+            "ffmpeg",
+            "-y",
+            "-v",
+            "error",
+            "-i",
+            str(video_path),
+            "-vn",
+            "-acodec",
+            "pcm_s16le",
+            "-ar",
+            "16000",
+            "-ac",
+            "1",
+            str(output_wav),
+        ]
 
-    result = subprocess.run(cmd, capture_output=True, text=True, check=False)
-    if result.returncode != 0:
-        output_wav.unlink(missing_ok=True)
-        raise MediaError(f"FFmpeg audio extraction failed: {result.stderr.strip()}")
+        result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+        if result.returncode != 0:
+            output_wav.unlink(missing_ok=True)
+            raise MediaError(f"FFmpeg audio extraction failed: {result.stderr.strip()}")
 
-    return output_wav.is_file() and output_wav.stat().st_size > 0
+        return output_wav.is_file() and output_wav.stat().st_size > 0
 
 
 def _run_transcription(
@@ -157,34 +161,47 @@ def transcribe_audio(
 
     use_cuda = torch.cuda.is_available()
 
-    if use_cuda:
-        try:
-            _logger.info("Initializing faster-whisper on CUDA (int8_float16)...")
-            gpu_model = load_whisper_model(device="cuda", compute_type="int8_float16")
-            return _run_transcription(
-                gpu_model,
-                audio_path,
-                total_duration,
-                on_progress,
-                should_stop,
-            )
-        except Exception as exc:
-            _logger.warning(
-                "CUDA transcription encountered error: %s. Falling back to CPU.",
-                exc,
-                exc_info=True,
-            )
-            load_whisper_model.cache_clear()
-            gc.collect()
-            with contextlib.suppress(Exception):
-                torch.cuda.empty_cache()
+    with logfire.span(
+        "whisper.transcribe",
+        audio_path=str(audio_path),
+        total_duration=total_duration,
+        device="cuda" if use_cuda else "cpu",
+    ) as span:
+        if use_cuda:
+            try:
+                _logger.info("Initializing faster-whisper on CUDA (int8_float16)...")
+                gpu_model = load_whisper_model(
+                    device="cuda", compute_type="int8_float16"
+                )
+                segments = _run_transcription(
+                    gpu_model,
+                    audio_path,
+                    total_duration,
+                    on_progress,
+                    should_stop,
+                )
+                span.set_attribute("segments_count", len(segments))
+                return segments
+            except Exception as exc:
+                span.set_attribute("fallback_to_cpu", True)
+                _logger.warning(
+                    "CUDA transcription encountered error: %s. Falling back to CPU.",
+                    exc,
+                    exc_info=True,
+                )
+                load_whisper_model.cache_clear()
+                gc.collect()
+                with contextlib.suppress(Exception):
+                    torch.cuda.empty_cache()
 
-    _logger.info("Running faster-whisper on CPU (int8)...")
-    cpu_model = load_whisper_model(device="cpu", compute_type="int8")
-    return _run_transcription(
-        cpu_model,
-        audio_path,
-        total_duration,
-        on_progress,
-        should_stop,
-    )
+        _logger.info("Running faster-whisper on CPU (int8)...")
+        cpu_model = load_whisper_model(device="cpu", compute_type="int8")
+        segments = _run_transcription(
+            cpu_model,
+            audio_path,
+            total_duration,
+            on_progress,
+            should_stop,
+        )
+        span.set_attribute("segments_count", len(segments))
+        return segments

@@ -47,6 +47,7 @@ Schema and Field Specifications:
 
 flashcards_agent = Agent[None, FlashcardsPayload](
     model=ai_model,
+    name="flashcards_generator",
     output_type=FlashcardsPayload,
     system_prompt=_SYSTEM_PROMPT,
     model_settings=ModelSettings(temperature=0.1, timeout=60.0),

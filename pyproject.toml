@@ -9,6 +9,7 @@ dependencies = [
     "chromadb>=1.5.9",
     "fastapi>=0.141.1",
     "faster-whisper>=1.2.1",
+    "logfire[celery,fastapi,httpx,redis,sqlite3]>=5.0.0",
     "ncert-cli>=1.0.3",
     "numpy==2.5.3",
     "nvidia-cublas-cu12>=12.9.2.10",

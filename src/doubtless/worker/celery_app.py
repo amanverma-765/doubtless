@@ -1,10 +1,23 @@
 """Celery worker application initialization."""
 
 import contextlib
+from typing import Any
 
 from celery import Celery
+from celery.signals import worker_process_init
 
-from doubtless.config import REDIS_URL
+from doubtless.config import LOGFIRE_WORKER_SERVICE_NAME, REDIS_URL
+from doubtless.core.telemetry import init_telemetry
+
+# Instrument Celery client and worker processes
+init_telemetry(service_name=LOGFIRE_WORKER_SERVICE_NAME)
+
+
+@worker_process_init.connect(weak=False)
+def _on_worker_process_init(*args: Any, **kwargs: Any) -> None:
+    """Initialize Logfire inside worker child process after prefork."""
+    init_telemetry(service_name=LOGFIRE_WORKER_SERVICE_NAME, force=True)
+
 
 celery_app = Celery(
     "doubtless",

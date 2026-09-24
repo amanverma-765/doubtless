@@ -4,6 +4,7 @@ import logging
 from functools import cache
 from typing import Any
 
+import logfire
 import numpy as np
 import torch
 from numpy.typing import NDArray
@@ -52,9 +53,15 @@ def embed_texts(
 
     query_prompt = prompt or _DEFAULT_QUERY_PROMPT if query else None
 
-    return get_embedding_model().encode(
-        texts,
-        prompt=query_prompt,
-        normalize_embeddings=True,
-        batch_size=8,
-    )
+    with logfire.span(
+        "embeddings.generate",
+        text_count=len(texts),
+        is_query=query,
+        model=_MODEL_NAME,
+    ):
+        return get_embedding_model().encode(
+            texts,
+            prompt=query_prompt,
+            normalize_embeddings=True,
+            batch_size=8,
+        )

@@ -95,6 +95,7 @@ Formatting:
 
 rag_agent = Agent[DoubtContext, str](
     model=ai_model,
+    name="doubtless_tutor",
     deps_type=DoubtContext,
     instructions=_INSTRUCTIONS,
     model_settings=ModelSettings(temperature=0.2, timeout=60.0),

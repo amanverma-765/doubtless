@@ -45,6 +45,7 @@ Strict Temporal Consistency and Invariants:
 
 chapter_agent = Agent[None, ChaptersPayload](
     model=ai_model,
+    name="chapteriser",
     output_type=ChaptersPayload,
     system_prompt=_SYSTEM_PROMPT,
     model_settings=ModelSettings(temperature=0.1, timeout=60.0),

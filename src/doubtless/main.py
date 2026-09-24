@@ -22,10 +22,15 @@ def main() -> None:
         celery_app.worker_main(["worker", "--loglevel=info", "--concurrency=1"])
     elif command == "index":
         # Lazy import to avoid ~3s PyTorch overhead on api/worker
+        import logfire
+
+        from doubtless.core.telemetry import init_telemetry
         from doubtless.rag.books.indexer import build_index
 
+        init_telemetry("doubtless-index")
         print("Building NCERT vector index...")
-        build_index()
+        with logfire.span("cli.build_index"):
+            build_index()
     else:
         print(f"Unknown command: {command}")
         print("Usage: doubtless [api|worker|index]")

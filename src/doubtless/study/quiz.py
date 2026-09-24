@@ -49,6 +49,7 @@ Schema and Formatting Rules:
 
 quiz_agent = Agent[None, QuizPayload](
     model=ai_model,
+    name="quiz_generator",
     output_type=QuizPayload,
     system_prompt=_SYSTEM_PROMPT,
     model_settings=ModelSettings(temperature=0.1, timeout=60.0),

@@ -4,6 +4,7 @@ import logging
 from collections.abc import AsyncGenerator
 from typing import Any, Literal
 
+import logfire
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic_ai import AgentRunResultEvent, UsageLimits
@@ -101,120 +102,137 @@ async def _stream_chat_events(
     accumulated_tokens: list[str] = []
     saved = False
 
-    try:
-        async with rag_agent.run_stream_events(
-            prompt,
-            deps=deps,
-            message_history=history,
-            usage_limits=UsageLimits(request_limit=5),
-        ) as events:
-            async for event in events:
-                if isinstance(event, FunctionToolCallEvent):
-                    tool_name = getattr(event.part, "tool_name", "tool")
-                    if tool_name == "get_chapter_notes":
-                        status = "Reviewing chapter notes & lecture outline..."
-                    elif tool_name == "search_lecture":
-                        status = "Searching lecture transcript..."
-                    elif tool_name == "search_books":
-                        status = "Searching NCERT textbooks..."
-                    else:
-                        status = f"Consulting {tool_name}..."
-                    yield _sse({"type": "status", "message": status})
+    with logfire.span("chat.stream", video_id=target_id, video_title=video_title):
+        try:
+            async with rag_agent.run_stream_events(
+                prompt,
+                deps=deps,
+                message_history=history,
+                usage_limits=UsageLimits(request_limit=5),
+            ) as events:
+                async for event in events:
+                    if isinstance(event, FunctionToolCallEvent):
+                        tool_name = getattr(event.part, "tool_name", "tool")
+                        if tool_name == "get_chapter_notes":
+                            status = "Reviewing chapter notes & lecture outline..."
+                        elif tool_name == "search_lecture":
+                            status = "Searching lecture transcript..."
+                        elif tool_name == "search_books":
+                            status = "Searching NCERT textbooks..."
+                        else:
+                            status = f"Consulting {tool_name}..."
+                        yield _sse({"type": "status", "message": status})
 
-                elif isinstance(event, FunctionToolResultEvent):
-                    yield _sse({"type": "status", "message": "Synthesizing answer..."})
-
-                elif (
-                    isinstance(event, PartStartEvent)
-                    and isinstance(event.part, TextPart)
-                    and event.part.content
-                ):
-                    chunk = event.part.content
-                    accumulated_tokens.append(chunk)
-                    yield _sse({"type": "token", "delta": chunk})
-
-                elif (
-                    isinstance(event, PartDeltaEvent)
-                    and isinstance(event.delta, TextPartDelta)
-                    and event.delta.content_delta
-                ):
-                    chunk = event.delta.content_delta
-                    accumulated_tokens.append(chunk)
-                    yield _sse({"type": "token", "delta": chunk})
-
-                elif isinstance(event, AgentRunResultEvent):
-                    full_reply = str(event.result.output)
-                    if not saved:
-                        _safe_add_message(
-                            target_id,
-                            role="assistant",
-                            content=full_reply,
+                    elif isinstance(event, FunctionToolResultEvent):
+                        yield _sse(
+                            {"type": "status", "message": "Synthesizing answer..."}
                         )
-                        saved = True
-                    yield _sse(
-                        {
-                            "type": "done",
-                            "reply": full_reply,
-                            "video_id": target_id,
-                        }
-                    )
 
-        # Fallback if AgentRunResultEvent wasn't triggered
-        if not saved and accumulated_tokens:
-            full_reply = "".join(accumulated_tokens)
-            _safe_add_message(target_id, role="assistant", content=full_reply)
-            saved = True
+                    elif (
+                        isinstance(event, PartStartEvent)
+                        and isinstance(event.part, TextPart)
+                        and event.part.content
+                    ):
+                        chunk = event.part.content
+                        accumulated_tokens.append(chunk)
+                        yield _sse({"type": "token", "delta": chunk})
+
+                    elif (
+                        isinstance(event, PartDeltaEvent)
+                        and isinstance(event.delta, TextPartDelta)
+                        and event.delta.content_delta
+                    ):
+                        chunk = event.delta.content_delta
+                        accumulated_tokens.append(chunk)
+                        yield _sse({"type": "token", "delta": chunk})
+
+                    elif isinstance(event, AgentRunResultEvent):
+                        full_reply = str(event.result.output)
+                        if not saved:
+                            _safe_add_message(
+                                target_id,
+                                role="assistant",
+                                content=full_reply,
+                            )
+                            saved = True
+                        yield _sse(
+                            {
+                                "type": "done",
+                                "reply": full_reply,
+                                "video_id": target_id,
+                            }
+                        )
+
+            # Fallback if AgentRunResultEvent wasn't triggered
+            if not saved and accumulated_tokens:
+                full_reply = "".join(accumulated_tokens)
+                _safe_add_message(target_id, role="assistant", content=full_reply)
+                saved = True
+                yield _sse(
+                    {
+                        "type": "done",
+                        "reply": full_reply,
+                        "video_id": target_id,
+                    }
+                )
+
+        except asyncio.CancelledError:
+            logfire.info(
+                "Chat stream disconnected by client for video {video_id}",
+                video_id=target_id,
+            )
+            logger.info("Client disconnected from chat stream for video %s", target_id)
+            raise
+
+        except UsageLimitExceeded as exc:
+            logfire.warning(
+                "Chat stream tool limit exceeded for video {video_id}: {error}",
+                video_id=target_id,
+                error=str(exc),
+            )
+            logger.warning(
+                "Tool request limit exceeded during chat stream for video %s: %s",
+                target_id,
+                exc,
+            )
+            limit_msg = (
+                "I reached the maximum search limit while researching your question. "
+                "Please try asking a more specific doubt."
+            )
+            if not saved:
+                _safe_add_message(target_id, role="assistant", content=limit_msg)
+                saved = True
             yield _sse(
                 {
-                    "type": "done",
-                    "reply": full_reply,
-                    "video_id": target_id,
+                    "type": "error",
+                    "message": "Search limit reached",
+                    "fallback": limit_msg,
                 }
             )
 
-    except asyncio.CancelledError:
-        logger.info("Client disconnected from chat stream for video %s", target_id)
-        raise
-
-    except UsageLimitExceeded as exc:
-        logger.warning(
-            "Tool request limit exceeded during chat stream for video %s: %s",
-            target_id,
-            exc,
-        )
-        limit_msg = (
-            "I reached the maximum search limit while researching your question. "
-            "Please try asking a more specific doubt."
-        )
-        if not saved:
-            _safe_add_message(target_id, role="assistant", content=limit_msg)
-            saved = True
-        yield _sse(
-            {
-                "type": "error",
-                "message": "Search limit reached",
-                "fallback": limit_msg,
-            }
-        )
-
-    except Exception as exc:
-        logger.exception("Error during chat stream execution: %s", exc)
-        fallback_msg = (
-            f'Regarding "{video_title}":\n\n'
-            f'I received your question: "{student_question}".\n\n'
-            f"(Doubt resolution assistant active for video `{target_id}`. "
-            f"Note: RAG provider status: {exc})"
-        )
-        if not saved:
-            _safe_add_message(target_id, role="assistant", content=fallback_msg)
-            saved = True
-        yield _sse(
-            {
-                "type": "error",
-                "message": str(exc),
-                "fallback": fallback_msg,
-            }
-        )
+        except Exception as exc:
+            logfire.exception(
+                "Chat stream failed for video {video_id}: {error}",
+                video_id=target_id,
+                error=str(exc),
+            )
+            logger.exception("Error during chat stream execution: %s", exc)
+            fallback_msg = (
+                f'Regarding "{video_title}":\n\n'
+                f'I received your question: "{student_question}".\n\n'
+                f"(Doubt resolution assistant active for video `{target_id}`. "
+                f"Note: RAG provider status: {exc})"
+            )
+            if not saved:
+                _safe_add_message(target_id, role="assistant", content=fallback_msg)
+                saved = True
+            yield _sse(
+                {
+                    "type": "error",
+                    "message": str(exc),
+                    "fallback": fallback_msg,
+                }
+            )
 
 
 @router.post("")

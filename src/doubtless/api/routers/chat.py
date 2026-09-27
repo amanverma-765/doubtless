@@ -84,19 +84,7 @@ async def ask_doubt(
             detail="message cannot be empty",
         )
 
-    # Convert prior database messages to native message history
-    history = chat_service.build_chat_history(target_id, limit=6)
-
-    # Save student question immediately
-    chat_service.safe_add_message(target_id, role="user", content=q)
-
-    # Prepare enriched prompt and agent dependencies
     current_time = request.current_time if request.current_time is not None else 0.0
-    prompt, deps = chat_service.build_chat_prompt(
-        video_id=target_id,
-        current_time=current_time,
-        question=q,
-    )
 
     # Check for SSE streaming request
     accept_header = raw_request.headers.get("accept", "")
@@ -107,13 +95,11 @@ async def ask_doubt(
 
     if wants_stream:
         return StreamingResponse(
-            chat_service.stream_chat_events(
-                prompt=prompt,
-                deps=deps,
-                history=history,
-                target_id=target_id,
+            chat_service.chat_stream(
+                video_id=target_id,
+                question=q,
+                current_time=current_time,
                 video_title=video.title,
-                student_question=q,
             ),
             media_type="text/event-stream",
             headers={
@@ -123,12 +109,10 @@ async def ask_doubt(
             },
         )
 
-    reply = await chat_service.generate_chat_reply(
-        prompt=prompt,
-        deps=deps,
-        history=history,
-        target_id=target_id,
+    reply = await chat_service.chat_reply(
+        video_id=target_id,
+        question=q,
+        current_time=current_time,
         video_title=video.title,
-        student_question=q,
     )
     return ChatResponse(reply=reply, video_id=target_id)

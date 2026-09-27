@@ -24,10 +24,16 @@ from pydantic_ai.messages import (
 
 from doubtless.core.formatting import format_timestamp
 from doubtless.rag.agent import DoubtContext, rag_agent
-from doubtless.storage.repositories import chat_repo, study_repo
+from doubtless.storage.repositories import chat_repo, study_repo, video_repo
 from doubtless.study.context import get_transcript_dialogue_window
 
 _logger = logging.getLogger(__name__)
+
+_TOOL_STATUS: dict[str, str] = {
+    "get_chapter_notes": "Reviewing chapter notes & lecture outline...",
+    "search_lecture": "Searching lecture transcript...",
+    "search_books": "Searching NCERT textbooks...",
+}
 
 
 def format_sse(data: dict[str, Any]) -> str:
@@ -35,7 +41,7 @@ def format_sse(data: dict[str, Any]) -> str:
     return f"data: {json.dumps(data)}\n\n"
 
 
-def safe_add_message(
+def _safe_add_message(
     video_id: str,
     role: Literal["user", "assistant"],
     content: str,
@@ -52,7 +58,7 @@ def safe_add_message(
         )
 
 
-def build_chat_history(video_id: str, limit: int = 6) -> list[ModelMessage]:
+def _build_chat_history(video_id: str, limit: int = 6) -> list[ModelMessage]:
     """Convert prior database messages to native Pydantic AI message history."""
     return [
         ModelRequest(parts=[UserPromptPart(content=m.content)])
@@ -62,7 +68,7 @@ def build_chat_history(video_id: str, limit: int = 6) -> list[ModelMessage]:
     ]
 
 
-def build_chat_prompt(
+def _build_chat_prompt(
     video_id: str,
     current_time: float,
     question: str,
@@ -95,19 +101,28 @@ def build_chat_prompt(
     return prompt, deps
 
 
-async def stream_chat_events(
-    prompt: str,
-    deps: DoubtContext,
-    history: list[ModelMessage],
-    target_id: str,
-    video_title: str,
-    student_question: str,
+async def chat_stream(
+    video_id: str,
+    question: str,
+    current_time: float = 0.0,
+    video_title: str | None = None,
 ) -> AsyncGenerator[str]:
-    """Execute Pydantic AI agent and stream SSE events to client."""
+    """Orchestrate doubt-solving session, persisting history and yielding SSE frames."""
+    if video_title is None:
+        v = video_repo.get_video(video_id)
+        video_title = v.title if v else "Lecture Video"
+
+    # 1. Save user inquiry
+    _safe_add_message(video_id, role="user", content=question)
+
+    # 2. Build history and enriched prompt
+    history = _build_chat_history(video_id, limit=6)
+    prompt, deps = _build_chat_prompt(video_id, current_time, question)
+
     accumulated_tokens: list[str] = []
     saved = False
 
-    with logfire.span("chat.stream", video_id=target_id, video_title=video_title):
+    with logfire.span("chat.stream", video_id=video_id, video_title=video_title):
         try:
             async with rag_agent.run_stream_events(
                 prompt,
@@ -118,14 +133,9 @@ async def stream_chat_events(
                 async for event in events:
                     if isinstance(event, FunctionToolCallEvent):
                         tool_name = getattr(event.part, "tool_name", "tool")
-                        if tool_name == "get_chapter_notes":
-                            status = "Reviewing chapter notes & lecture outline..."
-                        elif tool_name == "search_lecture":
-                            status = "Searching lecture transcript..."
-                        elif tool_name == "search_books":
-                            status = "Searching NCERT textbooks..."
-                        else:
-                            status = f"Consulting {tool_name}..."
+                        status = _TOOL_STATUS.get(
+                            tool_name, f"Consulting {tool_name}..."
+                        )
                         yield format_sse({"type": "status", "message": status})
 
                     elif isinstance(event, FunctionToolResultEvent):
@@ -154,8 +164,8 @@ async def stream_chat_events(
                     elif isinstance(event, AgentRunResultEvent):
                         full_reply = str(event.result.output)
                         if not saved:
-                            safe_add_message(
-                                target_id,
+                            _safe_add_message(
+                                video_id,
                                 role="assistant",
                                 content=full_reply,
                             )
@@ -164,40 +174,40 @@ async def stream_chat_events(
                             {
                                 "type": "done",
                                 "reply": full_reply,
-                                "video_id": target_id,
+                                "video_id": video_id,
                             }
                         )
 
             # Fallback if AgentRunResultEvent wasn't triggered
             if not saved and accumulated_tokens:
                 full_reply = "".join(accumulated_tokens)
-                safe_add_message(target_id, role="assistant", content=full_reply)
+                _safe_add_message(video_id, role="assistant", content=full_reply)
                 saved = True
                 yield format_sse(
                     {
                         "type": "done",
                         "reply": full_reply,
-                        "video_id": target_id,
+                        "video_id": video_id,
                     }
                 )
 
         except asyncio.CancelledError:
             logfire.info(
                 "Chat stream disconnected by client for video {video_id}",
-                video_id=target_id,
+                video_id=video_id,
             )
-            _logger.info("Client disconnected from chat stream for video %s", target_id)
+            _logger.info("Client disconnected from chat stream for video %s", video_id)
             raise
 
         except UsageLimitExceeded as exc:
             logfire.warning(
                 "Chat stream tool limit exceeded for video {video_id}: {error}",
-                video_id=target_id,
+                video_id=video_id,
                 error=str(exc),
             )
             _logger.warning(
                 "Tool request limit exceeded during chat stream for video %s: %s",
-                target_id,
+                video_id,
                 exc,
             )
             limit_msg = (
@@ -205,7 +215,7 @@ async def stream_chat_events(
                 "Please try asking a more specific doubt."
             )
             if not saved:
-                safe_add_message(target_id, role="assistant", content=limit_msg)
+                _safe_add_message(video_id, role="assistant", content=limit_msg)
                 saved = True
             yield format_sse(
                 {
@@ -218,18 +228,18 @@ async def stream_chat_events(
         except Exception as exc:
             logfire.exception(
                 "Chat stream failed for video {video_id}: {error}",
-                video_id=target_id,
+                video_id=video_id,
                 error=str(exc),
             )
             _logger.exception("Error during chat stream execution: %s", exc)
             fallback_msg = (
                 f'Regarding "{video_title}":\n\n'
-                f'I received your question: "{student_question}".\n\n'
-                f"(Doubt resolution assistant active for video `{target_id}`. "
+                f'I received your question: "{question}".\n\n'
+                f"(Doubt resolution assistant active for video `{video_id}`. "
                 f"Note: RAG provider status: {exc})"
             )
             if not saved:
-                safe_add_message(target_id, role="assistant", content=fallback_msg)
+                _safe_add_message(video_id, role="assistant", content=fallback_msg)
                 saved = True
             yield format_sse(
                 {
@@ -240,15 +250,24 @@ async def stream_chat_events(
             )
 
 
-async def generate_chat_reply(
-    prompt: str,
-    deps: DoubtContext,
-    history: list[ModelMessage],
-    target_id: str,
-    video_title: str,
-    student_question: str,
+async def chat_reply(
+    video_id: str,
+    question: str,
+    current_time: float = 0.0,
+    video_title: str | None = None,
 ) -> str:
-    """Execute single-turn Pydantic AI agent run and return the answer string."""
+    """Orchestrate single-turn doubt resolution, returning answer string."""
+    if video_title is None:
+        v = video_repo.get_video(video_id)
+        video_title = v.title if v else "Lecture Video"
+
+    # 1. Save user inquiry
+    _safe_add_message(video_id, role="user", content=question)
+
+    # 2. Build history and enriched prompt
+    history = _build_chat_history(video_id, limit=6)
+    prompt, deps = _build_chat_prompt(video_id, current_time, question)
+
     try:
         agent_result = await rag_agent.run(
             prompt,
@@ -260,10 +279,10 @@ async def generate_chat_reply(
     except Exception as exc:
         reply = (
             f'Regarding "{video_title}":\n\n'
-            f'I received your question: "{student_question}".\n\n'
-            f"(Doubt resolution assistant active for video `{target_id}`. "
+            f'I received your question: "{question}".\n\n'
+            f"(Doubt resolution assistant active for video `{video_id}`. "
             f"Note: RAG provider status: {exc})"
         )
 
-    safe_add_message(target_id, role="assistant", content=reply)
+    _safe_add_message(video_id, role="assistant", content=reply)
     return reply

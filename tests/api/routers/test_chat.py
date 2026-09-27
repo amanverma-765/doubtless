@@ -1,5 +1,7 @@
 """Integration tests for chat endpoints: query, history, and clear history."""
 
+from collections.abc import AsyncGenerator
+
 from fastapi.testclient import TestClient
 
 from doubtless.storage.repositories import chat_repo, video_repo
@@ -82,15 +84,21 @@ def test_post_chat_streaming_success(client: TestClient) -> None:
         "vid_stream", "Streaming Lecture", "stream.mp4", status="ready"
     )
 
-    async def mock_events(*args, **kwargs):
+    async def mock_events(
+        video_id: str,
+        question: str,
+        current_time: float = 0.0,
+        video_title: str | None = None,
+    ) -> AsyncGenerator[str]:
+        chat_repo.add_message(video_id, role="user", content=question)
         yield 'data: {"type": "chunk", "delta": "Test answer"}\n\n'
         yield (
             'data: {"type": "done", "reply": "Test answer", '
-            '"video_id": "vid_stream"}\n\n'
+            f'"video_id": "{video_id}"}}\n\n'
         )
 
     with patch(
-        "doubtless.rag.chat_service.stream_chat_events",
+        "doubtless.rag.chat_service.chat_stream",
         side_effect=mock_events,
     ):
         res = client.post(

@@ -43,9 +43,7 @@ def test_run_transcription_filters_repetition_and_hallucinations() -> None:
         SimpleNamespace(
             start=7.0, end=15.0, text="bye bye bye bye bye bye"
         ),  # repetition collapse
-        SimpleNamespace(
-            start=15.0, end=20.0, text="Let's write the Nernst equation."
-        ),
+        SimpleNamespace(start=15.0, end=20.0, text="Let's write the Nernst equation."),
     ]
     mock_info = SimpleNamespace(duration=20.0)
     mock_model.transcribe.return_value = (mock_segments, mock_info)

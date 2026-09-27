@@ -15,6 +15,8 @@ COPY src/ ./src/
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev
 
+RUN mkdir -p /cache/huggingface && chmod -R 777 /cache
+
 RUN echo "/app/.venv/lib/python3.14/site-packages/nvidia/cublas/lib" > /etc/ld.so.conf.d/nvidia.conf \
  && echo "/app/.venv/lib/python3.14/site-packages/nvidia/cudnn/lib" >> /etc/ld.so.conf.d/nvidia.conf \
  && echo "/app/.venv/lib/python3.14/site-packages/nvidia/cuda_nvrtc/lib" >> /etc/ld.so.conf.d/nvidia.conf \
@@ -23,4 +25,4 @@ RUN echo "/app/.venv/lib/python3.14/site-packages/nvidia/cublas/lib" > /etc/ld.s
 ENV LD_LIBRARY_PATH="/app/.venv/lib/python3.14/site-packages/nvidia/cublas/lib:/app/.venv/lib/python3.14/site-packages/nvidia/cudnn/lib:/app/.venv/lib/python3.14/site-packages/nvidia/cuda_nvrtc/lib:${LD_LIBRARY_PATH}"
 
 # Default entrypoint runs doubtless CLI (defaults to api server)
-CMD ["uv", "run", "doubtless", "api"]
+CMD ["/app/.venv/bin/doubtless", "api"]

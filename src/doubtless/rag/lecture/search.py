@@ -1,6 +1,6 @@
 """Vector search across lecture transcript chunks."""
 
-from doubtless.domain.schemas import LectureChunk
+from doubtless.domain import LectureChunk
 from doubtless.rag.embeddings import embed_texts
 from doubtless.rag.query_expansion import expand_query
 from doubtless.storage.vector_store import get_lectures_collection

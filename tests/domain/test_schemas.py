@@ -1,23 +1,21 @@
-"""Unit tests verifying domain schema structure and re-exports."""
+"""Unit tests verifying domain schema structure and exports."""
 
 from doubtless.domain import (
     ChatMessage,
+    Flashcard,
+    HealthResponse,
+    LectureChunk,
     QuizQuestion,
+    TranscriptSegment,
     VideoChapter,
     VideoItemResponse,
     VideoNotes,
     VideoRecord,
 )
-from doubtless.domain.schemas import (
-    Flashcard,
-    HealthResponse,
-    LectureChunk,
-    TranscriptSegment,
-)
 
 
 def test_domain_schemas_reexports() -> None:
-    """Verify that doubtless.domain and doubtless.domain.schemas re-export models."""
+    """Verify that doubtless.domain exports domain models."""
     msg = ChatMessage(role="user", content="Hello test")
     assert msg.role == "user"
     assert msg.content == "Hello test"

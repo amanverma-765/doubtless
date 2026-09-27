@@ -1,6 +1,6 @@
 """Semantic chunking of speech-to-text transcript segments."""
 
-from doubtless.domain.schemas import LectureChunk, TranscriptSegment
+from doubtless.domain import LectureChunk, TranscriptSegment
 
 
 def chunk_transcript(

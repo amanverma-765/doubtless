@@ -7,7 +7,7 @@ from logfire.testing import CaptureLogfire
 
 from doubtless.config import LOGFIRE_EXCLUDED_URLS
 from doubtless.core.telemetry import _instrumented_services, init_telemetry
-from doubtless.domain.schemas import TranscriptSegment
+from doubtless.domain import TranscriptSegment
 from doubtless.media.transcriber import extract_audio, transcribe_audio
 from doubtless.rag.embeddings import embed_texts
 

@@ -1,14 +1,19 @@
 """Shared SentenceTransformer embedding model singleton and encoding utilities."""
 
+from __future__ import annotations
+
 import logging
 from functools import cache
-from typing import Any
+from typing import TYPE_CHECKING, cast
 
 import logfire
 import numpy as np
 import torch
 from numpy.typing import NDArray
 from sentence_transformers import SentenceTransformer
+
+if TYPE_CHECKING:
+    from transformers import PreTrainedTokenizerBase, PreTrainedTokenizerFast
 
 _logger = logging.getLogger(__name__)
 
@@ -37,9 +42,12 @@ def get_embedding_model() -> SentenceTransformer:
     return SentenceTransformer(_MODEL_NAME, device="cpu")
 
 
-def get_tokenizer() -> Any:
+def get_tokenizer() -> PreTrainedTokenizerBase | PreTrainedTokenizerFast:
     """Return the embedding model's tokenizer for token-aligned chunk sizing."""
-    return get_embedding_model().tokenizer
+    return cast(
+        "PreTrainedTokenizerBase | PreTrainedTokenizerFast",
+        get_embedding_model().tokenizer,
+    )
 
 
 def embed_texts(

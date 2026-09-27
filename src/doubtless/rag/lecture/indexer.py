@@ -5,7 +5,7 @@ from typing import Any
 
 import torch
 
-from doubtless.domain.schemas import LectureChunk
+from doubtless.domain import LectureChunk
 from doubtless.rag.embeddings import embed_texts
 from doubtless.storage.vector_store import get_lectures_collection
 

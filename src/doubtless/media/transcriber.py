@@ -1,5 +1,7 @@
 """Audio extraction and speech-to-text transcription via faster-whisper."""
 
+from __future__ import annotations
+
 import contextlib
 import gc
 import logging
@@ -7,13 +9,16 @@ import subprocess
 from collections.abc import Callable
 from functools import lru_cache
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import logfire
 import torch
 
-from doubtless.domain.schemas import TranscriptSegment
+from doubtless.domain import TranscriptSegment
 from doubtless.media.probe import MediaError, has_audio_stream
+
+if TYPE_CHECKING:
+    from faster_whisper import WhisperModel  # type: ignore[import-untyped]
 
 _logger = logging.getLogger(__name__)
 
@@ -26,9 +31,9 @@ _HINGLISH_PROMPT = (
 
 
 @lru_cache(maxsize=2)
-def load_whisper_model(device: str = "cpu", compute_type: str = "int8") -> Any:
+def load_whisper_model(device: str = "cpu", compute_type: str = "int8") -> WhisperModel:
     """Retrieve or load a cached WhisperModel for the device and precision."""
-    from faster_whisper import WhisperModel  # type: ignore[import-untyped]
+    from faster_whisper import WhisperModel
 
     return WhisperModel(
         _WHISPER_MODEL_SIZE,
@@ -80,7 +85,7 @@ def extract_audio(
 
 
 def _run_transcription(
-    model: Any,
+    model: WhisperModel,
     audio_path: Path,
     total_duration: float,
     on_progress: Callable[[float], None] | None,

@@ -1,6 +1,6 @@
 """Query-time lookup against the NCERT textbook vector index."""
 
-from doubtless.domain.schemas import BookChunk
+from doubtless.domain import BookChunk
 from doubtless.rag.embeddings import embed_texts
 from doubtless.rag.query_expansion import expand_query
 from doubtless.storage.vector_store import get_books_collection

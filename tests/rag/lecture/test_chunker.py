@@ -1,6 +1,6 @@
 """Unit tests for transcript semantic chunker."""
 
-from doubtless.domain.schemas import TranscriptSegment
+from doubtless.domain import TranscriptSegment
 from doubtless.rag.lecture.chunker import chunk_transcript
 
 

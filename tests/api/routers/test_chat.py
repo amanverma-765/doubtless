@@ -2,7 +2,7 @@
 
 from fastapi.testclient import TestClient
 
-from doubtless.storage import db
+from doubtless.storage.repositories import chat_repo, video_repo
 
 
 def test_get_chat_history_404(client: TestClient) -> None:
@@ -19,9 +19,9 @@ def test_clear_chat_history_404(client: TestClient) -> None:
 
 def test_get_and_clear_chat_history_success(client: TestClient) -> None:
     """Clear chat history removes messages and returns deleted count."""
-    db.create_video("vid_chat", "Test Video", "test.mp4")
-    db.add_message("vid_chat", role="user", content="Hello")
-    db.add_message("vid_chat", role="assistant", content="Hi there")
+    video_repo.create_video("vid_chat", "Test Video", "test.mp4")
+    chat_repo.add_message("vid_chat", role="user", content="Hello")
+    chat_repo.add_message("vid_chat", role="assistant", content="Hi there")
 
     # Verify history
     res = client.get("/api/v1/chat/vid_chat")
@@ -56,7 +56,7 @@ def test_post_chat_validation_errors(client: TestClient) -> None:
     assert res_404.status_code == 404
 
     # Empty message on existing video
-    db.create_video("vid_ready", "Ready", "ready.mp4", status="ready")
+    video_repo.create_video("vid_ready", "Ready", "ready.mp4", status="ready")
     res_empty_msg = client.post(
         "/api/v1/chat",
         json={"video_id": "vid_ready", "message": "   "},
@@ -66,7 +66,7 @@ def test_post_chat_validation_errors(client: TestClient) -> None:
 
 def test_post_chat_conflict_when_not_ready(client: TestClient) -> None:
     """Submitting a doubt to a non-ready video returns 409 conflict."""
-    db.create_video("vid_proc", "Processing", "proc.mp4", status="processing")
+    video_repo.create_video("vid_proc", "Processing", "proc.mp4", status="processing")
     res = client.post(
         "/api/v1/chat",
         json={"video_id": "vid_proc", "message": "What is this?"},
@@ -78,7 +78,9 @@ def test_post_chat_streaming_success(client: TestClient) -> None:
     """Successful chat submission streams SSE events and saves messages."""
     from unittest.mock import patch
 
-    db.create_video("vid_stream", "Streaming Lecture", "stream.mp4", status="ready")
+    video_repo.create_video(
+        "vid_stream", "Streaming Lecture", "stream.mp4", status="ready"
+    )
 
     async def mock_events(*args, **kwargs):
         yield 'data: {"type": "chunk", "delta": "Test answer"}\n\n'
@@ -88,7 +90,7 @@ def test_post_chat_streaming_success(client: TestClient) -> None:
         )
 
     with patch(
-        "doubtless.api.routers.chat._stream_chat_events",
+        "doubtless.rag.chat_service.stream_chat_events",
         side_effect=mock_events,
     ):
         res = client.post(
@@ -106,5 +108,5 @@ def test_post_chat_streaming_success(client: TestClient) -> None:
         assert '{"type": "done"' in res.text
 
     # Verify user message was persisted in database
-    msgs = db.get_messages("vid_stream")
+    msgs = chat_repo.get_messages("vid_stream")
     assert any(m.role == "user" and "quantum" in m.content for m in msgs)

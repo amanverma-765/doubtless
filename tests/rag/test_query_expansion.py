@@ -1,5 +1,6 @@
 """Unit tests for query expansion and enhanced vector search."""
 
+from collections.abc import Generator
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -15,7 +16,7 @@ from doubtless.rag.query_expansion import (
 
 
 @pytest.fixture(autouse=True)
-def clean_expansion_cache() -> None:
+def clean_expansion_cache() -> Generator[None]:
     """Ensure in-memory expansion cache does not leak across tests."""
     _expansion_cache.clear()
     yield
@@ -76,7 +77,7 @@ async def test_search_lecture_with_expansion() -> None:
             "doubtless.rag.lecture.search.get_lectures_collection",
             return_value=mock_collection,
         ),
-        patch("doubtless.rag.lecture.search.embed_texts", return_value=[[0.1, 0.2]]),
+        patch("doubtless.rag.retrieval.embed_texts", return_value=[[0.1, 0.2]]),
     ):
         results = await search_lecture("vid1", "wo jo 6 wala ligand tha", k=2)
         assert len(results) == 1
@@ -104,7 +105,7 @@ async def test_search_books_with_expansion() -> None:
             "doubtless.rag.books.search.get_books_collection",
             return_value=mock_collection,
         ),
-        patch("doubtless.rag.books.search.embed_texts", return_value=[[0.1, 0.2]]),
+        patch("doubtless.rag.retrieval.embed_texts", return_value=[[0.1, 0.2]]),
     ):
         results = await search_books("ligands", k=5, max_distance=1.15)
         # 1.45 distance is dropped

@@ -6,11 +6,11 @@ from pydantic_ai import Agent, RunContext
 from pydantic_ai.settings import ModelSettings
 
 from doubtless.core.formatting import format_timestamp
-from doubtless.domain.schemas import BookChunk, LectureChunk, VideoNotes
+from doubtless.domain import BookChunk, LectureChunk, VideoNotes
 from doubtless.rag.books.search import search_books as _search_books_impl
 from doubtless.rag.lecture.search import search_lecture as _search_lecture_impl
 from doubtless.rag.llm import ai_model as ai_model
-from doubtless.storage import db
+from doubtless.storage.repositories import study_repo
 
 
 @dataclass(slots=True)
@@ -121,7 +121,7 @@ def get_chapter_notes(ctx: RunContext[DoubtContext]) -> VideoNotes | None:
     are covered, requests an overview or syllabus roadmap, or wants a high-level
     review of the entire lecture from start to finish.
     """
-    return db.get_video_notes(ctx.deps.video_id)
+    return study_repo.get_video_notes(ctx.deps.video_id)
 
 
 @rag_agent.tool

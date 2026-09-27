@@ -3,7 +3,8 @@
 import logging
 from typing import Any
 
-from doubtless.storage import db, file_storage, redis_store
+from doubtless.storage import file_storage, redis_store
+from doubtless.storage.repositories import video_repo
 from doubtless.storage.vector_store import delete_lecture_vectors
 
 _logger = logging.getLogger(__name__)
@@ -22,7 +23,7 @@ def cascade_delete_video(video_id: str) -> dict[str, Any]:
         _logger.warning("Invalid video ID format for deletion: %s", video_id)
         return {"deleted": False, "reason": "invalid_id"}
 
-    v = db.get_video(video_id)
+    v = video_repo.get_video(video_id)
 
     # 1. Revoke Celery task if running
     if v and v.task_id:
@@ -46,17 +47,26 @@ def cascade_delete_video(video_id: str) -> dict[str, Any]:
     delete_lecture_vectors(video_id)
 
     # 4. Filesystem cleanup
-    file_storage.delete_video_files(video_id)
+    fs_deleted = True
+    try:
+        file_storage.delete_video_files(video_id)
+    except Exception as exc:
+        fs_deleted = False
+        _logger.error(
+            "Filesystem cleanup encountered error for video %s: %s", video_id, exc
+        )
 
     # 5. SQLite relational database cleanup
-    db_deleted = db.delete_video(video_id)
+    db_deleted = video_repo.delete_video(video_id)
 
     _logger.info(
-        "Cascade deletion completed for video %s (db_deleted=%s)",
+        "Cascade deletion completed for video %s (db_deleted=%s, fs_deleted=%s)",
         video_id,
         db_deleted,
+        fs_deleted,
     )
     return {
         "deleted": db_deleted,
         "video_id": video_id,
+        "fs_deleted": fs_deleted,
     }

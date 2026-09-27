@@ -1,8 +1,8 @@
 """Asynchronous Celery tasks for media transcoding, transcription, and indexing."""
 
 import concurrent.futures
+import contextlib
 import logging
-import shutil
 from pathlib import Path
 from typing import Any
 
@@ -13,8 +13,9 @@ from doubtless.media.transcoder import extract_poster, transcode_with_progress
 from doubtless.media.transcriber import extract_audio, transcribe_audio
 from doubtless.rag.lecture.chunker import chunk_transcript
 from doubtless.rag.lecture.indexer import index_lecture_chunks
-from doubtless.storage import db, file_storage, redis_store
+from doubtless.storage import file_storage, redis_store
 from doubtless.storage.cascade_delete import cascade_delete_video
+from doubtless.storage.repositories import transcript_repo, video_repo
 from doubtless.study.chapteriser import generate_chapters
 from doubtless.study.flashcards import generate_flashcards
 from doubtless.study.notes import generate_notes
@@ -57,13 +58,17 @@ def transcode_video(
         return {"cancelled": True}
 
     out = file_storage.hls_dir(video_id)
-    shutil.rmtree(out, ignore_errors=True)
+    file_storage.clean_hls_dir(video_id)
     out.mkdir(parents=True, exist_ok=True)
+    with contextlib.suppress(OSError):
+        out.chmod(0o777)
 
     audio_wav = out / "audio.wav"
 
     def _is_cancelled() -> bool:
-        return redis_store.is_cancelled(video_id) or db.get_video(video_id) is None
+        return (
+            redis_store.is_cancelled(video_id) or video_repo.get_video(video_id) is None
+        )
 
     def _update_progress(
         p: float,
@@ -171,7 +176,7 @@ def transcode_video(
                 "pipeline.index_chunks", video_id=video_id, segment_count=len(segments)
             ):
                 if segments:
-                    db.insert_transcripts(video_id, segments)
+                    transcript_repo.insert_transcripts(video_id, segments)
 
                 if _is_cancelled():
                     return _cleanup_cancelled()
@@ -237,7 +242,7 @@ def transcode_video(
             # Complete: Mark video ready
             playlist = file_storage.playlist_url(video_id)
             poster = file_storage.poster_url(video_id)
-            db.update_video(
+            video_repo.update_video(
                 video_id,
                 status="ready",
                 playlist=playlist,
@@ -258,7 +263,7 @@ def transcode_video(
             "Video processing failed: {error}", error=str(exc), video_id=video_id
         )
         audio_wav.unlink(missing_ok=True)
-        db.update_video(
+        video_repo.update_video(
             video_id,
             status="error",
             error=str(exc),

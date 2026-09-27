@@ -6,14 +6,14 @@ from pydantic_ai import Agent
 from pydantic_ai.settings import ModelSettings
 
 from doubtless.core.formatting import format_timestamp
-from doubtless.domain.schemas import (
+from doubtless.domain import (
     TranscriptSegment,
     VideoChapter,
     VideoNotes,
     VideoNotesPayload,
 )
 from doubtless.rag.llm import ai_model
-from doubtless.storage import db
+from doubtless.storage.repositories import study_repo
 from doubtless.study.context import format_lecture_context
 
 logger = logging.getLogger(__name__)
@@ -81,7 +81,7 @@ def generate_notes(
                 "> No spoken lecture audio was detected for this video."
             ),
         )
-        db.save_video_notes(empty_notes)
+        study_repo.save_video_notes(empty_notes)
         return empty_notes
 
     context_text = format_lecture_context(
@@ -119,5 +119,5 @@ def generate_notes(
             markdown=fallback_md,
         )
 
-    db.save_video_notes(notes)
+    study_repo.save_video_notes(notes)
     return notes

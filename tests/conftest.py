@@ -8,20 +8,20 @@ import pytest
 from fastapi.testclient import TestClient
 
 from doubtless.api.app import app
-from doubtless.storage import db
+from doubtless.storage import connection
 
 
 @pytest.fixture
 def temp_db(tmp_path: Path) -> Generator[Path]:
     """Provide an isolated temporary SQLite database path for testing."""
     test_db = tmp_path / "test_doubtless.db"
-    with patch.object(db, "_DB_PATH", test_db):
-        db._tables_initialized = False
-        db.init_db()
+    with patch.object(connection, "_DB_PATH", test_db):
+        connection.reset_db_state(test_db)
+        connection.init_db()
         try:
             yield test_db
         finally:
-            db._tables_initialized = False
+            connection.reset_db_state()
 
 
 @pytest.fixture

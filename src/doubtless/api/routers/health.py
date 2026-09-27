@@ -5,9 +5,9 @@ from typing import Literal
 from fastapi import APIRouter
 
 from doubtless.config import DATA_DIR
-from doubtless.domain.schemas import HealthResponse
+from doubtless.domain import HealthResponse
 from doubtless.storage import redis_store
-from doubtless.storage.db import check_db_health
+from doubtless.storage.connection import check_db_health
 
 router = APIRouter(tags=["health"])
 

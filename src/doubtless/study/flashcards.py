@@ -5,14 +5,14 @@ import logging
 from pydantic_ai import Agent
 from pydantic_ai.settings import ModelSettings
 
-from doubtless.domain.schemas import (
+from doubtless.domain import (
     Flashcard,
     FlashcardsPayload,
     TranscriptSegment,
     VideoChapter,
 )
 from doubtless.rag.llm import ai_model
-from doubtless.storage import db
+from doubtless.storage.repositories import study_repo
 from doubtless.study.context import format_lecture_context
 
 logger = logging.getLogger(__name__)
@@ -61,7 +61,7 @@ def generate_flashcards(
 ) -> list[Flashcard]:
     """Generate quick-revision flashcards for a video lecture."""
     if not segments:
-        db.save_video_flashcards(video_id, [])
+        study_repo.save_video_flashcards(video_id, [])
         return []
 
     context_text = format_lecture_context(segments, chapters)
@@ -77,5 +77,5 @@ def generate_flashcards(
         logger.exception("Failed to generate flashcards: %s", exc)
         cards = []
 
-    db.save_video_flashcards(video_id, cards)
+    study_repo.save_video_flashcards(video_id, cards)
     return cards

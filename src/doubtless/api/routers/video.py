@@ -6,7 +6,7 @@ import anyio
 from fastapi import APIRouter, HTTPException, Request
 
 from doubtless.config import ALLOWED_EXTENSIONS, MAX_UPLOAD_BYTES
-from doubtless.domain.schemas import (
+from doubtless.domain import (
     UploadAcceptedResponse,
     UploadConfigResponse,
     VideoDeleteResponse,
@@ -14,9 +14,10 @@ from doubtless.domain.schemas import (
     VideoRecord,
     VideoStatusResponse,
 )
-from doubtless.storage import db, file_storage, redis_store
+from doubtless.storage import file_storage, redis_store
 from doubtless.storage.cascade_delete import cascade_delete_video
 from doubtless.storage.redis_store import VideoProgressData
+from doubtless.storage.repositories import video_repo
 from doubtless.worker.celery_app import get_task_error
 from doubtless.worker.tasks import transcode_video
 
@@ -56,7 +57,7 @@ def _record_to_item_response(
 @router.get("", response_model=list[VideoItemResponse])
 def list_all_videos() -> list[VideoItemResponse]:
     """Retrieve all uploaded and processed videos."""
-    videos = db.list_videos()
+    videos = video_repo.list_videos()
     processing_ids = [v.id for v in videos if v.status == "processing"]
     progress_map = (
         redis_store.get_transcode_progress_batch(processing_ids)
@@ -89,7 +90,7 @@ def get_video_status(video_id: str) -> VideoStatusResponse:
         return VideoStatusResponse(state="idle")
 
     # 1. Check Database record
-    v = db.get_video(target_id)
+    v = video_repo.get_video(target_id)
     if not v:
         return VideoStatusResponse(state="idle")
 
@@ -111,7 +112,7 @@ def get_video_status(video_id: str) -> VideoStatusResponse:
 
     # 3. Check Celery task if unexpectedly failed
     if v.task_id and (err_msg := get_task_error(v.task_id)):
-        db.update_video(target_id, status="error", error=err_msg)
+        video_repo.update_video(target_id, status="error", error=err_msg)
         return VideoStatusResponse(
             state="error",
             progress=0.0,
@@ -132,7 +133,7 @@ def get_video_status(video_id: str) -> VideoStatusResponse:
 @router.get("/{video_id}", response_model=VideoItemResponse)
 def get_video_by_id(video_id: str) -> VideoItemResponse:
     """Retrieve details for a specific video."""
-    v = db.get_video(video_id)
+    v = video_repo.get_video(video_id)
     if not v:
         raise HTTPException(
             status_code=404,
@@ -210,7 +211,7 @@ async def upload_video(
     filename = f"{video_id}.{ext}"
 
     # Register record
-    db.create_video(video_id, title=video_title, filename=filename)
+    video_repo.create_video(video_id, title=video_title, filename=filename)
 
     dest_path = file_storage.source_path(video_id, ext)
 
@@ -226,7 +227,7 @@ async def upload_video(
                 status_code=400,
                 detail="Uploaded file is empty (0 bytes).",
             )
-        if redis_store.is_cancelled(video_id) or not db.get_video(video_id):
+        if redis_store.is_cancelled(video_id) or not video_repo.get_video(video_id):
             raise HTTPException(
                 status_code=409,
                 detail="Upload cancelled or video record deleted.",
@@ -234,10 +235,10 @@ async def upload_video(
 
         # Dispatch Celery transcode task
         task = transcode_video.delay(video_id, str(dest_path))
-        db.update_video(video_id, status="processing", task_id=task.id)
+        video_repo.update_video(video_id, status="processing", task_id=task.id)
     except BaseException:
         file_storage.delete_video_files(video_id)
-        db.delete_video(video_id)
+        video_repo.delete_video(video_id)
         raise
 
     return UploadAcceptedResponse(id=video_id)

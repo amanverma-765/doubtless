@@ -22,7 +22,7 @@ from doubtless.api.routers import (
 from doubtless.config import CORS_ORIGINS, HLS_DIR, LOGFIRE_SERVICE_NAME
 from doubtless.core.telemetry import init_telemetry
 from doubtless.storage import file_storage
-from doubtless.storage.db import init_db
+from doubtless.storage.connection import init_db
 
 logger = logging.getLogger(__name__)
 
@@ -53,8 +53,7 @@ class HLSStaticFiles(StaticFiles):
 
 @asynccontextmanager
 async def _lifespan(_: FastAPI) -> AsyncGenerator[None]:
-    """Initialize filesystem directories, SQLite database, and warm models on boot."""
-    file_storage.ensure_dirs()
+    """Initialize SQLite database and warm models on boot."""
     init_db()
 
     # Pre-warm SentenceTransformer embedding model asynchronously in background
@@ -75,6 +74,8 @@ async def _lifespan(_: FastAPI) -> AsyncGenerator[None]:
 
 def create_app() -> FastAPI:
     """Create and configure the FastAPI application instance."""
+    file_storage.ensure_dirs()
+
     app = FastAPI(
         title="doubtless API",
         description=(

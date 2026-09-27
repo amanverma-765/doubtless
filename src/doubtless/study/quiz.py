@@ -5,14 +5,14 @@ import logging
 from pydantic_ai import Agent
 from pydantic_ai.settings import ModelSettings
 
-from doubtless.domain.schemas import (
+from doubtless.domain import (
     QuizPayload,
     QuizQuestion,
     TranscriptSegment,
     VideoChapter,
 )
 from doubtless.rag.llm import ai_model
-from doubtless.storage import db
+from doubtless.storage.repositories import study_repo
 from doubtless.study.context import format_lecture_context
 
 logger = logging.getLogger(__name__)
@@ -63,7 +63,7 @@ def generate_quiz(
 ) -> list[QuizQuestion]:
     """Generate interactive multiple-choice quiz questions for a video lecture."""
     if not segments:
-        db.save_video_quiz(video_id, [])
+        study_repo.save_video_quiz(video_id, [])
         return []
 
     context_text = format_lecture_context(segments, chapters)
@@ -79,5 +79,5 @@ def generate_quiz(
         logger.exception("Failed to generate quiz via quiz_agent: %s", exc)
         questions = []
 
-    db.save_video_quiz(video_id, questions)
+    study_repo.save_video_quiz(video_id, questions)
     return questions

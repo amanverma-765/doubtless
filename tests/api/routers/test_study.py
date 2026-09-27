@@ -2,13 +2,13 @@
 
 from fastapi.testclient import TestClient
 
-from doubtless.domain.schemas import (
+from doubtless.domain import (
     Flashcard,
     QuizQuestion,
     VideoChapter,
     VideoNotes,
 )
-from doubtless.storage import db
+from doubtless.storage.repositories import study_repo, video_repo
 
 
 def test_study_endpoints_404_for_unknown_video(client: TestClient) -> None:
@@ -20,7 +20,7 @@ def test_study_endpoints_404_for_unknown_video(client: TestClient) -> None:
 
 def test_study_endpoints_empty_artifacts(client: TestClient) -> None:
     """Existing video with no generated artifacts returns 200 OK."""
-    db.create_video("vid_empty", "Empty Lecture", "vid_empty.mp4")
+    video_repo.create_video("vid_empty", "Empty Lecture", "vid_empty.mp4")
 
     # Chapters
     res_chapters = client.get("/api/v1/videos/vid_empty/chapters")
@@ -45,9 +45,9 @@ def test_study_endpoints_empty_artifacts(client: TestClient) -> None:
 
 def test_study_endpoints_populated_artifacts(client: TestClient) -> None:
     """Existing video with populated artifacts returns 200 OK with payload."""
-    db.create_video("vid_full", "Complete Lecture", "vid_full.mp4")
+    video_repo.create_video("vid_full", "Complete Lecture", "vid_full.mp4")
 
-    db.save_chapters(
+    study_repo.save_chapters(
         "vid_full",
         [
             VideoChapter(
@@ -58,14 +58,14 @@ def test_study_endpoints_populated_artifacts(client: TestClient) -> None:
             )
         ],
     )
-    db.save_video_notes(
+    study_repo.save_video_notes(
         VideoNotes(
             video_id="vid_full",
             title="Lecture Notes",
             markdown="# Summary",
         )
     )
-    db.save_video_quiz(
+    study_repo.save_video_quiz(
         "vid_full",
         [
             QuizQuestion(
@@ -77,7 +77,7 @@ def test_study_endpoints_populated_artifacts(client: TestClient) -> None:
             )
         ],
     )
-    db.save_video_flashcards(
+    study_repo.save_video_flashcards(
         "vid_full",
         [
             Flashcard(

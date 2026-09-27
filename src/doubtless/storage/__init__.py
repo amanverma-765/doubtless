@@ -1,5 +1,5 @@
-"""SQLite database engine and filesystem storage management."""
+"""Storage infrastructure: SQLite connection, repositories, and cache."""
 
-from doubtless.storage import db, file_storage, redis_store
+from doubtless.storage import connection, file_storage, redis_store, repositories
 
-__all__ = ["db", "file_storage", "redis_store"]
+__all__ = ["connection", "file_storage", "redis_store", "repositories"]

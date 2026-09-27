@@ -6,13 +6,13 @@ from pydantic_ai import Agent
 from pydantic_ai.settings import ModelSettings
 
 from doubtless.core.formatting import format_timestamp
-from doubtless.domain.schemas import (
+from doubtless.domain import (
     ChaptersPayload,
     TranscriptSegment,
     VideoChapter,
 )
 from doubtless.rag.llm import ai_model
-from doubtless.storage import db
+from doubtless.storage.repositories import study_repo
 
 logger = logging.getLogger(__name__)
 
@@ -90,5 +90,5 @@ def generate_chapters(
             )
         ]
 
-    db.save_chapters(video_id, chapters)
+    study_repo.save_chapters(video_id, chapters)
     return chapters

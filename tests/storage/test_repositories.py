@@ -145,8 +145,10 @@ def test_study_artifacts_storage(temp_db: Path) -> None:
     assert empty_window == ""
 
     # Active chapter at time
-    assert study_repo.get_chapter_at_time("v2", 15.0).title == "Intro"
-    assert study_repo.get_chapter_at_time("v2", 45.0).title == "Kinematics"
+    ch_intro = study_repo.get_chapter_at_time("v2", 15.0)
+    ch_kin = study_repo.get_chapter_at_time("v2", 45.0)
+    assert ch_intro is not None and ch_intro.title == "Intro"
+    assert ch_kin is not None and ch_kin.title == "Kinematics"
 
     # Chat messages
     chat_repo.add_message("v2", role="user", content="What is force?")

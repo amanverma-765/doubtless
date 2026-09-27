@@ -1,6 +1,7 @@
 """Tests for complete cascading deletion of video and all associated artifacts."""
 
 from pathlib import Path
+from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
 import chromadb
@@ -96,7 +97,7 @@ def test_cascade_delete_purges_all_layers(temp_db: Path, tmp_path: Path) -> None
         )
 
         # 2. Create dummy filesystem artifacts
-        source_file = file_storage.VIDEO_DIR / f"{vid}.mp4"
+        source_file = file_storage.source_path(vid, "mp4")
         source_file.write_text("dummy video bytes")
         hls_folder = file_storage.hls_dir(vid)
         hls_folder.mkdir(parents=True, exist_ok=True)
@@ -114,7 +115,7 @@ def test_cascade_delete_purges_all_layers(temp_db: Path, tmp_path: Path) -> None
             ids=[f"{vid}_chunk_0"],
             documents=["Test chunk for cascade delete"],
             metadatas=[{"video_id": vid, "start_time": 0.0, "end_time": 10.0}],
-            embeddings=[[0.05] * 1024],
+            embeddings=cast(Any, [[0.05] * 1024]),
         )
         assert col.get(where={"video_id": vid})["ids"] == [f"{vid}_chunk_0"]
 

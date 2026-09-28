@@ -271,7 +271,7 @@ doubtless/
 │   ├── Dockerfile               # Production multi-stage frontend build
 │   └── package.json             # React 19, Tailwind CSS v4, Vite 8
 │
-├── tests/                       # Automated test suite (91 backend tests)
+├── tests/                       # Automated test suite (96 backend tests)
 │   ├── api/                     # Router endpoint contract tests
 │   ├── core/                    # Telemetry & formatting tests
 │   ├── media/                   # Transcoding, chunking, & probe tests
@@ -330,11 +330,25 @@ The easiest way to run the entire full-stack platform (API, Celery worker, Redis
 
 ---
 
-### Method 2: Local Development Setup
+### Method 2: Running with `uv` and `npm` (Local Development)
 
-#### 1. Backend Setup
+You can run the entire system directly on your host machine using `uv` for Python services and `npm` for the frontend.
 
-Doubtless uses [uv](https://docs.astral.sh/uv/) for high-speed Python package management.
+#### 1. Start Redis
+Celery task execution and real-time transcode progress tracking require a running Redis instance on port 6379:
+
+```bash
+# Option A: Run Redis container via Docker
+docker run -d --name doubtless-redis -p 6379:6379 redis:7-alpine
+
+# Option B: Run native Redis service
+sudo systemctl start redis    # Arch / Ubuntu / Debian
+brew services start redis     # macOS
+```
+
+#### 2. Backend Setup & Services (`uv`)
+
+Doubtless uses [uv](https://docs.astral.sh/uv/) for high-speed dependency management and service execution.
 
 ```bash
 # Install uv if not already installed
@@ -351,19 +365,17 @@ cp .env.example .env
 uv run doubtless index
 ```
 
-**Run Backend Services:**
-```bash
-# Terminal 1: Start Redis (via Docker or local package)
-docker run -p 6379:6379 redis:7-alpine
+Run the backend services in separate terminal tabs:
 
-# Terminal 2: Start FastAPI API server (Port 8000)
+```bash
+# Terminal 1: Start FastAPI API server (Port 8000)
 uv run doubtless api
 
-# Terminal 3: Start Celery Background Worker
+# Terminal 2: Start Celery Background Worker
 uv run doubtless worker
 ```
 
-#### 2. Frontend Setup
+#### 3. Frontend Setup (`npm`)
 
 ```bash
 cd frontend
@@ -376,6 +388,15 @@ npm run dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000) in your browser.
+
+#### Port & Service Mapping
+
+| Service | Runner | Port / URL |
+|---|---|---|
+| **Redis** | Native service / Docker | `localhost:6379` |
+| **API Server** | `uv run doubtless api` | `http://localhost:8000` (Docs: `/docs`) |
+| **Celery Worker** | `uv run doubtless worker` | Background Celery consumer |
+| **Frontend UI** | `npm run dev` (in `frontend/`) | `http://localhost:3000` |
 
 ---
 
@@ -405,7 +426,7 @@ Doubtless is built with strict adherence to automated testing and clean architec
 ### Backend Verification (Python)
 
 ```bash
-# Run complete test suite (91 passed)
+# Run complete test suite (96 passed)
 uv run pytest
 
 # Run with verbose output

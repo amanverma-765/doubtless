@@ -5,7 +5,7 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/*
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
-ENV UV_LINK_MODE=copy UV_COMPILE_BYTECODE=1
+ENV UV_LINK_MODE=copy UV_COMPILE_BYTECODE=1 HOME=/cache
 
 WORKDIR /app
 COPY pyproject.toml uv.lock README.md ./
@@ -15,7 +15,11 @@ COPY src/ ./src/
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev
 
-RUN mkdir -p /cache/huggingface && chmod -R 777 /cache
+# Create application user and group (UID 1000) with home directory at /cache
+RUN groupadd -g 1000 doubtless \
+ && useradd -u 1000 -g doubtless -d /cache -s /bin/bash doubtless \
+ && mkdir -p /cache /app/data \
+ && chown -R doubtless:doubtless /cache /app/data
 
 RUN echo "/app/.venv/lib/python3.14/site-packages/nvidia/cublas/lib" > /etc/ld.so.conf.d/nvidia.conf \
  && echo "/app/.venv/lib/python3.14/site-packages/nvidia/cudnn/lib" >> /etc/ld.so.conf.d/nvidia.conf \

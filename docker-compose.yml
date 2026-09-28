@@ -1,4 +1,27 @@
 services:
+  init-permissions:
+    image: alpine:latest
+    user: "0:0"
+    command:
+      - /bin/sh
+      - -c
+      - |
+        TARGET_UID="$${UID:-1000}"
+        TARGET_GID="$${GID:-1000}"
+        mkdir -p /cache/huggingface /cache/triton /cache/nv /cache/torch /app/data
+        if [ "$$(stat -c '%u:%g' /cache)" != "$$TARGET_UID:$$TARGET_GID" ]; then
+          chown -R "$$TARGET_UID:$$TARGET_GID" /cache
+        else
+          chown "$$TARGET_UID:$$TARGET_GID" /cache /cache/huggingface /cache/triton /cache/nv /cache/torch
+        fi
+        if [ "$$(stat -c '%u:%g' /app/data)" != "$$TARGET_UID:$$TARGET_GID" ]; then
+          chown -R "$$TARGET_UID:$$TARGET_GID" /app/data
+        fi
+    volumes:
+      - ./data:/app/data
+      - model_cache:/cache
+    restart: "no"
+
   redis:
     image: redis:7-alpine
     ports: ["6379:6379"]
@@ -17,9 +40,13 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment: &backend_env
+      HOME: /cache
       REDIS_URL: redis://redis:6379/0
       DOUBTLESS_DATA: /app/data
       HF_HOME: /cache/huggingface
+      TRITON_CACHE_DIR: /cache/triton
+      CUDA_CACHE_PATH: /cache/nv/ComputeCache
+      TORCH_HOME: /cache/torch
       HOST: 0.0.0.0
       PORT: 8000
       CORS_ORIGINS: "http://localhost:3000,http://127.0.0.1:3000,*"
@@ -33,8 +60,10 @@ services:
       LOGFIRE_SERVICE_NAME: ${LOGFIRE_SERVICE_NAME:-doubtless-api}
     volumes:
       - ./data:/app/data
-      - huggingface_cache:/cache/huggingface
+      - model_cache:/cache
     depends_on:
+      init-permissions:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
 
@@ -51,7 +80,7 @@ services:
       NVIDIA_DRIVER_CAPABILITIES: compute,utility
     volumes:
       - ./data:/app/data
-      - huggingface_cache:/cache/huggingface
+      - model_cache:/cache
     deploy:
       resources:
         reservations:
@@ -60,6 +89,8 @@ services:
               count: ${DOCKER_GPU_COUNT:-all}
               capabilities: [gpu]
     depends_on:
+      init-permissions:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
       api:
@@ -74,4 +105,4 @@ services:
       - api
 
 volumes:
-  huggingface_cache:
+  model_cache:

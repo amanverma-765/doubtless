@@ -103,3 +103,7 @@ class VideoFlashcardsResponse(BaseModel):
 
     video_id: str
     cards: list[Flashcard]
+
+
+class StudyGenerationError(Exception):
+    """Raised when lecture study artifact generation fails or output is invalid."""

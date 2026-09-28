@@ -12,6 +12,7 @@ import logfire
 from doubtless.domain import (
     Flashcard,
     QuizQuestion,
+    StudyGenerationError,
     TranscriptSegment,
     VideoChapter,
 )
@@ -181,11 +182,17 @@ class PipelineRunner:
         segments: list[TranscriptSegment],
     ) -> tuple[list[VideoChapter], list[QuizQuestion], list[Flashcard]]:
         """Generate topic chapters, study notes, quiz questions, and flashcards."""
+        if not segments:
+            self.update_progress("generating_notes", 1.0, "No speech detected")
+            return [], [], []
+
         self.update_progress("generating_notes", 0.0, "Generating topic chapters…")
         with logfire.span("pipeline.study_generation", video_id=self.video_id):
-            chapters = generate_chapters(segments) if segments else []
-            if chapters:
-                study_repo.save_chapters(self.video_id, chapters)
+            chapters = generate_chapters(segments)
+            if not chapters:
+                raise StudyGenerationError(
+                    "Chapter generation produced no chapters for transcript."
+                )
 
             self.check_cancelled()
 
@@ -203,11 +210,14 @@ class PipelineRunner:
                 future_cards = executor.submit(generate_flashcards, segments, chapters)
 
                 notes = future_notes.result()
-                study_repo.save_video_notes(notes)
-                quiz_questions = future_quiz.result() or []
-                study_repo.save_video_quiz(self.video_id, quiz_questions)
-                flashcards = future_cards.result() or []
-                study_repo.save_video_flashcards(self.video_id, flashcards)
+                quiz_questions = future_quiz.result()
+                flashcards = future_cards.result()
+
+            # Atomically persist all study artifacts only after complete success
+            study_repo.save_chapters(self.video_id, chapters)
+            study_repo.save_video_notes(notes)
+            study_repo.save_video_quiz(self.video_id, quiz_questions)
+            study_repo.save_video_flashcards(self.video_id, flashcards)
 
         self.update_progress("generating_notes", 1.0, "Finalizing lecture…")
         return chapters, quiz_questions, flashcards

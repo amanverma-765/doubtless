@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from doubtless.domain import StudyGenerationError, TranscriptSegment
 from doubtless.media.pipeline import (
     PipelineRunner,
     calc_overall_progress,
@@ -124,3 +125,42 @@ def test_pipeline_error_handling(tmp_path: Path) -> None:
         mock_update.assert_called_once()
         assert mock_update.call_args[1]["status"] == "error"
         assert "Corrupted file" in mock_update.call_args[1]["error"]
+
+
+def test_pipeline_study_generation_failure_marks_video_error(tmp_path: Path) -> None:
+    """Failure during study generation halts pipeline and marks video as error."""
+    video_repo.create_video("study_err_vid", "Study Error Lecture", "study_err.mp4")
+    fake_src = tmp_path / "lecture.mp4"
+    fake_src.write_bytes(b"video bytes")
+
+    runner = PipelineRunner("study_err_vid", fake_src)
+    mock_probe = MagicMock()
+    mock_probe.duration = 100.0
+    mock_probe.acodec = "aac"
+
+    dummy_segments = [
+        TranscriptSegment(start=0.0, end=10.0, text="First topic."),
+    ]
+
+    with (
+        patch.object(runner, "is_cancelled", return_value=False),
+        patch("doubtless.media.pipeline.probe_video", return_value=mock_probe),
+        patch("doubtless.media.pipeline.extract_poster"),
+        patch("doubtless.media.pipeline.transcode_with_progress"),
+        patch.object(runner, "_phase_transcribe", return_value=dummy_segments),
+        patch("doubtless.media.pipeline.transcript_repo.insert_transcripts"),
+        patch("doubtless.media.pipeline.chunk_transcript", return_value=[]),
+        patch("doubtless.media.pipeline.index_lecture_chunks"),
+        patch(
+            "doubtless.media.pipeline.generate_chapters",
+            side_effect=StudyGenerationError("LLM quota exceeded"),
+        ),
+        patch("doubtless.media.pipeline.video_repo.update_video") as mock_update,
+        patch("doubtless.media.pipeline.redis_store"),
+    ):
+        with pytest.raises(StudyGenerationError, match="LLM quota exceeded"):
+            runner.run()
+
+        mock_update.assert_called_once()
+        assert mock_update.call_args[1]["status"] == "error"
+        assert "LLM quota exceeded" in mock_update.call_args[1]["error"]

@@ -16,6 +16,7 @@ from doubtless.domain import (
     FlashcardsPayload,
     QuizPayload,
     QuizQuestion,
+    StudyGenerationError,
     TranscriptSegment,
     VideoChapter,
     VideoNotes,
@@ -204,18 +205,14 @@ def generate_chapters(
 
     try:
         result = chapter_agent.run_sync(prompt)
-        return result.output.chapters
     except Exception as exc:
         logger.exception("Failed to generate chapters via chapter_agent: %s", exc)
-        total_duration = segments[-1].end if segments else 0.0
-        return [
-            VideoChapter(
-                start_time=0.0,
-                end_time=round(total_duration, 2),
-                title="Full Lecture",
-                description="Complete recording of the lecture session.",
-            )
-        ]
+        raise StudyGenerationError(f"Failed to generate chapters: {exc}") from exc
+
+    chapters = result.output.chapters
+    if not chapters:
+        raise StudyGenerationError("Chapter generator produced 0 chapters.")
+    return chapters
 
 
 def generate_notes(
@@ -244,23 +241,19 @@ def generate_notes(
 
     try:
         result = notes_agent.run_sync(prompt)
-        payload = result.output
-        return VideoNotes(
-            video_id=video_id,
-            title=payload.title,
-            markdown=payload.markdown,
-        )
     except Exception as exc:
         logger.exception("Failed to generate notes via notes_agent: %s", exc)
-        return VideoNotes(
-            video_id=video_id,
-            title="Lecture Notes",
-            markdown=(
-                "# Lecture Notes\n\n"
-                "> AI notes generation failed for this video session. "
-                "Please refer to the interactive lecture transcript."
-            ),
-        )
+        raise StudyGenerationError(f"Failed to generate study notes: {exc}") from exc
+
+    payload = result.output
+    if not payload.markdown or not payload.markdown.strip():
+        raise StudyGenerationError("Notes generator produced empty markdown.")
+
+    return VideoNotes(
+        video_id=video_id,
+        title=payload.title,
+        markdown=payload.markdown,
+    )
 
 
 def generate_quiz(
@@ -279,10 +272,14 @@ def generate_quiz(
 
     try:
         result = quiz_agent.run_sync(prompt)
-        return result.output.questions
     except Exception as exc:
         logger.exception("Failed to generate quiz via quiz_agent: %s", exc)
-        return []
+        raise StudyGenerationError(f"Failed to generate quiz: {exc}") from exc
+
+    questions = result.output.questions
+    if not questions:
+        raise StudyGenerationError("Quiz generator produced 0 questions.")
+    return questions
 
 
 def generate_flashcards(
@@ -301,7 +298,11 @@ def generate_flashcards(
 
     try:
         result = flashcards_agent.run_sync(prompt)
-        return result.output.cards
     except Exception as exc:
         logger.exception("Failed to generate flashcards: %s", exc)
-        return []
+        raise StudyGenerationError(f"Failed to generate flashcards: {exc}") from exc
+
+    cards = result.output.cards
+    if not cards:
+        raise StudyGenerationError("Flashcards generator produced 0 flashcards.")
+    return cards

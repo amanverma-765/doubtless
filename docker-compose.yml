@@ -8,11 +8,11 @@ services:
       - |
         TARGET_UID="$${UID:-1000}"
         TARGET_GID="$${GID:-1000}"
-        mkdir -p /cache/huggingface /cache/triton /cache/nv /cache/torch /app/data
+        mkdir -p /cache/huggingface /cache/torch /app/data
         if [ "$$(stat -c '%u:%g' /cache)" != "$$TARGET_UID:$$TARGET_GID" ]; then
           chown -R "$$TARGET_UID:$$TARGET_GID" /cache
         else
-          chown "$$TARGET_UID:$$TARGET_GID" /cache /cache/huggingface /cache/triton /cache/nv /cache/torch
+          chown "$$TARGET_UID:$$TARGET_GID" /cache /cache/huggingface /cache/torch
         fi
         if [ "$$(stat -c '%u:%g' /app/data)" != "$$TARGET_UID:$$TARGET_GID" ]; then
           chown -R "$$TARGET_UID:$$TARGET_GID" /app/data
@@ -44,8 +44,6 @@ services:
       REDIS_URL: redis://redis:6379/0
       DOUBTLESS_DATA: /app/data
       HF_HOME: /cache/huggingface
-      TRITON_CACHE_DIR: /cache/triton
-      CUDA_CACHE_PATH: /cache/nv/ComputeCache
       TORCH_HOME: /cache/torch
       HOST: 0.0.0.0
       PORT: 8000
@@ -53,7 +51,8 @@ services:
       AI_BASE_URL: ${AI_BASE_URL:-http://host.docker.internal:20128/v1}
       AI_MODEL_NAME: ${AI_MODEL_NAME:-cx/gpt-5.6-luna}
       NINEROUTER_API_KEY: ${NINEROUTER_API_KEY:-}
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      GROQ_WHISPER_MODEL: ${GROQ_WHISPER_MODEL:-whisper-large-v3}
       LOGFIRE_TOKEN: ${LOGFIRE_TOKEN:-}
       LOGFIRE_ENVIRONMENT: ${LOGFIRE_ENVIRONMENT:-production}
       LOGFIRE_SEND_TO_LOGFIRE: ${LOGFIRE_SEND_TO_LOGFIRE:-if-token-present}
@@ -76,18 +75,9 @@ services:
     environment:
       <<: *backend_env
       LOGFIRE_SERVICE_NAME: ${LOGFIRE_WORKER_SERVICE_NAME:-doubtless-worker}
-      NVIDIA_VISIBLE_DEVICES: all
-      NVIDIA_DRIVER_CAPABILITIES: compute,utility
     volumes:
       - ./data:/app/data
       - model_cache:/cache
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: ${DOCKER_GPU_COUNT:-all}
-              capabilities: [gpu]
     depends_on:
       init-permissions:
         condition: service_completed_successfully

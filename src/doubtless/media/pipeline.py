@@ -66,7 +66,7 @@ class PipelineRunner:
         self.src_path = src_path
         self.progress_callback = progress_callback
         self.out_dir = file_storage.hls_dir(video_id)
-        self.audio_wav = self.out_dir / "audio.wav"
+        self.audio_file = self.out_dir / "audio.m4a"
 
     def is_cancelled(self) -> bool:
         """Evaluate if video has been cancelled via Redis or deleted from SQLite."""
@@ -119,35 +119,35 @@ class PipelineRunner:
         self.update_progress("transcoding", 1.0, "Transcoding complete")
 
     def _phase_transcribe(self, media_info: MediaProbe) -> list[TranscriptSegment]:
-        """Extract 16kHz mono audio and run Whisper speech-to-text."""
+        """Extract 16kHz mono audio and run Groq Whisper speech-to-text."""
         self.update_progress("transcribing", 0.0, "Extracting audio track…")
         segments: list[TranscriptSegment] = []
 
         with logfire.span("pipeline.transcribe", video_id=self.video_id):
             has_audio = extract_audio(
                 self.src_path,
-                self.audio_wav,
+                self.audio_file,
                 has_audio=media_info.acodec is not None,
             )
             self.check_cancelled()
 
-            if has_audio and self.audio_wav.is_file():
+            if has_audio and self.audio_file.is_file():
                 duration = media_info.duration
 
                 def _on_whisper_prog(p: float) -> None:
                     self.update_progress(
                         "transcribing",
                         p,
-                        "Transcribing speech with AI (GPU)",
+                        "Transcribing speech with Groq Whisper API",
                     )
 
                 segments = transcribe_audio(
-                    self.audio_wav,
+                    self.audio_file,
                     total_duration=duration,
                     on_progress=_on_whisper_prog,
                     should_stop=self.is_cancelled,
                 )
-                self.audio_wav.unlink(missing_ok=True)
+                self.audio_file.unlink(missing_ok=True)
 
         self.update_progress("transcribing", 1.0, "Transcription complete")
         return segments
@@ -214,7 +214,7 @@ class PipelineRunner:
 
     def _cleanup_cancelled(self) -> dict[str, Any]:
         """Tear down partial filesystem and database state on cancelled task."""
-        self.audio_wav.unlink(missing_ok=True)
+        self.audio_file.unlink(missing_ok=True)
         cascade_delete_video(self.video_id)
         redis_store.clear_cancellation(self.video_id)
         return {"cancelled": True}
@@ -277,7 +277,7 @@ class PipelineRunner:
                 error=str(exc),
                 video_id=self.video_id,
             )
-            self.audio_wav.unlink(missing_ok=True)
+            self.audio_file.unlink(missing_ok=True)
             video_repo.update_video(
                 self.video_id,
                 status="error",

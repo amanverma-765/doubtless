@@ -25,7 +25,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### Infrastructure (Docker)
 - Start full stack: `docker compose up --build`
-- Services: Redis (6379), API (8000), Worker (GPU enabled), Frontend (3000)
+- Services: Redis (6379), API (8000), Worker, Frontend (3000)
 
 ---
 
@@ -36,7 +36,7 @@ Doubtless is an interactive platform providing real-time doubt resolution across
 ### 1. Ingestion & Media Pipeline (`src/doubtless/media/`, `src/doubtless/worker/`)
 - `PipelineRunner` (`media/pipeline.py`) coordinates the complete ingestion lifecycle across 4 monotonic stages:
   1. `transcoding` (0-25%): FFprobe container inspection (`probe.py`), thumbnail extraction (`extract_poster`), and HLS VOD segmentation (`transcoder.py`).
-  2. `transcribing` (25-70%): 16kHz mono audio extraction and `faster-whisper` speech-to-text with hallucination filtering (`transcriber.py`).
+  2. `transcribing` (25-70%): 16kHz mono audio extraction and Groq Whisper API speech-to-text with hallucination filtering and automatic chunking (`transcriber.py`).
   3. `indexing` (70-85%): Relational segment storage (`transcript_repo`), 45s sliding chunk aggregation (`rag/lecture/chunker.py`), and vector embedding into ChromaDB (`rag/lecture/indexer.py`).
   4. `generating_notes` (85-100%): Concurrent generation of topic chapters, Markdown notes, quizzes, and flashcards (`study/generator.py`), persisted to `study_repo`.
 - `transcode_video` (`worker/tasks.py`) is a thin Celery task adapter delegating to `PipelineRunner` with cancellation guards and Redis progress reporting.

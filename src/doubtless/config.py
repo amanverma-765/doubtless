@@ -32,7 +32,11 @@ CORS_ORIGINS: list[str] = [
 # AI & RAG configuration
 AI_MODEL_NAME = os.getenv("AI_MODEL_NAME", "cx/gpt-5.6-luna")
 AI_BASE_URL = os.getenv("AI_BASE_URL", "http://localhost:20128/v1")
-AI_API_KEY = os.getenv("NINEROUTER_API_KEY") or os.getenv("OPENAI_API_KEY", "")
+AI_API_KEY = os.getenv("NINEROUTER_API_KEY", "")
+
+# Speech-to-Text (Groq Whisper) configuration
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
+GROQ_WHISPER_MODEL = os.getenv("GROQ_WHISPER_MODEL", "whisper-large-v3")
 
 # Observability (Logfire) configuration
 LOGFIRE_TOKEN: str | None = os.getenv("LOGFIRE_TOKEN") or None

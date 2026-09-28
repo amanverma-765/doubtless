@@ -1,13 +1,14 @@
 """Tests for Doubtless Logfire telemetry initialization and custom spans."""
 
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+import pytest
 from logfire.testing import CaptureLogfire
 
 from doubtless.config import LOGFIRE_EXCLUDED_URLS
 from doubtless.core.telemetry import _instrumented_services, init_telemetry
-from doubtless.domain import TranscriptSegment
 from doubtless.media.transcriber import extract_audio, transcribe_audio
 from doubtless.rag.embeddings import embed_texts
 
@@ -83,26 +84,25 @@ def test_audio_extract_span(capfire: CaptureLogfire, tmp_path: Path) -> None:
         assert str(dummy_video) in str(attrs.get("video_path"))
 
 
-def test_transcribe_audio_span(capfire: CaptureLogfire, tmp_path: Path) -> None:
+def test_transcribe_audio_span(
+    capfire: CaptureLogfire, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """transcribe_audio records whisper.transcribe span with duration and segments."""
-    dummy_wav = tmp_path / "speech.wav"
-    dummy_wav.write_bytes(b"RIFF dummy speech wav")
+    monkeypatch.setattr("doubtless.config.GROQ_API_KEY", "gsk_test_key")
+    dummy_audio = tmp_path / "speech.m4a"
+    dummy_audio.write_bytes(b"dummy speech audio")
 
     fake_segments = [
-        TranscriptSegment(start=0.0, end=4.5, text="Welcome to the lecture."),
-        TranscriptSegment(start=4.5, end=9.0, text="Today we discuss kinematics."),
+        SimpleNamespace(start=0.0, end=4.5, text="Welcome to the lecture."),
+        SimpleNamespace(start=4.5, end=9.0, text="Today we discuss kinematics."),
     ]
+    mock_client = MagicMock()
+    mock_client.audio.transcriptions.create.return_value = SimpleNamespace(
+        segments=fake_segments
+    )
 
-    with (
-        patch("torch.cuda.is_available", return_value=False),
-        patch("doubtless.media.transcriber.load_whisper_model") as mock_load,
-        patch(
-            "doubtless.media.transcriber._run_transcription",
-            return_value=fake_segments,
-        ),
-    ):
-        mock_load.return_value = MagicMock()
-        result = transcribe_audio(dummy_wav, total_duration=9.0)
+    with patch("doubtless.media.transcriber.get_groq_client", return_value=mock_client):
+        result = transcribe_audio(dummy_audio, total_duration=9.0)
         assert len(result) == 2
 
         spans = [
@@ -112,44 +112,5 @@ def test_transcribe_audio_span(capfire: CaptureLogfire, tmp_path: Path) -> None:
         ]
         assert len(spans) == 1
         attrs = spans[0].get("attributes", {})
-        assert attrs.get("device") == "cpu"
         assert attrs.get("segments_count") == 2
         assert attrs.get("total_duration") == 9.0
-
-
-def test_transcribe_audio_cuda_fallback_span(
-    capfire: CaptureLogfire, tmp_path: Path
-) -> None:
-    """transcribe_audio tags fallback_to_cpu attribute when CUDA throws."""
-    dummy_wav = tmp_path / "speech.wav"
-    dummy_wav.write_bytes(b"RIFF dummy speech wav")
-
-    fake_segments = [
-        TranscriptSegment(start=0.0, end=5.0, text="CPU fallback successful."),
-    ]
-
-    def _mock_load(device: str, compute_type: str) -> MagicMock:
-        if device == "cuda":
-            raise RuntimeError("CUDA out of memory")
-        return MagicMock()
-
-    with (
-        patch("torch.cuda.is_available", return_value=True),
-        patch("doubtless.media.transcriber.load_whisper_model", side_effect=_mock_load),
-        patch(
-            "doubtless.media.transcriber._run_transcription",
-            return_value=fake_segments,
-        ),
-    ):
-        result = transcribe_audio(dummy_wav, total_duration=5.0)
-        assert len(result) == 1
-
-        spans = [
-            s
-            for s in capfire.exporter.exported_spans_as_dict()
-            if s.get("name") == "whisper.transcribe"
-        ]
-        assert len(spans) == 1
-        attrs = spans[0].get("attributes", {})
-        assert attrs.get("fallback_to_cpu") is True
-        assert attrs.get("segments_count") == 1

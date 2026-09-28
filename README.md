@@ -14,6 +14,7 @@
 [![Strict Mypy](https://img.shields.io/badge/mypy-strict_mode-blue.svg?style=flat)](https://mypy-lang.org)
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 [![Tests](https://img.shields.io/badge/tests-151_passed-success.svg?style=flat)]()
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 ---
 
@@ -426,7 +427,7 @@ Doubtless is built with strict adherence to automated testing and clean architec
 ### Backend Verification (Python)
 
 ```bash
-# Run complete test suite (96 passed)
+# Run complete test suite (98 passed)
 uv run pytest
 
 # Run with verbose output
@@ -450,7 +451,7 @@ uv run ruff format --check .
 ```bash
 cd frontend
 
-# Run Vitest component & service test suite (43 passed)
+# Run Vitest component & service test suite (53 passed)
 npm run test
 
 # Run Oxlint / TypeScript type check

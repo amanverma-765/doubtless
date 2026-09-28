@@ -2,6 +2,7 @@
 name = "doubtless"
 version = "1.0.0"
 readme = "README.md"
+license = "MIT"
 description = "An interactive platform providing real-time doubt resolution across live and recorded video lectures."
 requires-python = ">=3.14"
 dependencies = [

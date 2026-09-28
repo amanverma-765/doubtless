@@ -1,6 +1,9 @@
 """Study artifacts (chapters, notes, quizzes, flashcards) persistence and retrieval."""
 
 import json
+import logging
+
+from pydantic import ValidationError
 
 from doubtless.domain import (
     Flashcard,
@@ -9,6 +12,8 @@ from doubtless.domain import (
     VideoNotes,
 )
 from doubtless.storage.connection import get_db
+
+_logger = logging.getLogger(__name__)
 
 
 def save_chapters(video_id: str, chapters: list[VideoChapter]) -> None:
@@ -123,7 +128,12 @@ def get_video_quiz(video_id: str) -> list[QuizQuestion]:
         try:
             items = json.loads(row["json_data"])
             return [QuizQuestion.model_validate(q) for q in items]
-        except Exception:
+        except (json.JSONDecodeError, ValidationError) as exc:
+            _logger.warning(
+                "Corrupted quiz data for video %s: %s",
+                video_id,
+                exc,
+            )
             return []
 
 
@@ -152,5 +162,10 @@ def get_video_flashcards(video_id: str) -> list[Flashcard]:
         try:
             items = json.loads(row["json_data"])
             return [Flashcard.model_validate(c) for c in items]
-        except Exception:
+        except (json.JSONDecodeError, ValidationError) as exc:
+            _logger.warning(
+                "Corrupted flashcards data for video %s: %s",
+                video_id,
+                exc,
+            )
             return []

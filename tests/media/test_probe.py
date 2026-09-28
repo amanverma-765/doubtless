@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from doubtless.media.probe import MediaError, probe_video
+from doubtless.media.probe import MediaError, probe_audio_duration, probe_video
 
 
 def test_probe_video_success() -> None:
@@ -49,3 +49,17 @@ def test_probe_video_no_video_stream() -> None:
         mock_run.return_value = MagicMock(returncode=0, stdout=sample_output)
         with pytest.raises(MediaError, match="No valid video stream"):
             probe_video(Path("/tmp/audio_only.mp4"))
+
+
+def test_probe_audio_duration_success() -> None:
+    """probe_audio_duration extracts duration from ffprobe format metadata."""
+    with patch("subprocess.run") as mock_run:
+        mock_run.return_value = MagicMock(returncode=0, stdout="42.75\n")
+        assert probe_audio_duration(Path("/tmp/audio.m4a")) == 42.75
+
+
+def test_probe_audio_duration_failure_returns_zero() -> None:
+    """probe_audio_duration returns 0.0 when ffprobe fails or output is invalid."""
+    with patch("subprocess.run") as mock_run:
+        mock_run.return_value = MagicMock(returncode=1, stderr="Error")
+        assert probe_audio_duration(Path("/tmp/invalid.m4a")) == 0.0

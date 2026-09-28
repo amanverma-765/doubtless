@@ -1,5 +1,6 @@
 """FFprobe metadata extraction: video and audio stream inspection."""
 
+import contextlib
 import json
 import subprocess
 from dataclasses import dataclass
@@ -94,3 +95,26 @@ def has_audio_stream(src: Path) -> bool:
         return probe_video(src).acodec is not None
     except Exception:
         return False
+
+
+def probe_audio_duration(src: Path) -> float:
+    """Return media duration in seconds via ffprobe format metadata."""
+    result = subprocess.run(
+        [
+            "ffprobe",
+            "-v",
+            "error",
+            "-show_entries",
+            "format=duration",
+            "-of",
+            "default=noprint_wrappers=1:nokey=1",
+            str(src),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode == 0:
+        with contextlib.suppress(ValueError, TypeError):
+            return max(0.0, float(result.stdout.strip()))
+    return 0.0

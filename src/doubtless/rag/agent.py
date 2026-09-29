@@ -9,7 +9,7 @@ from doubtless.core.formatting import format_timestamp
 from doubtless.domain import BookChunk, LectureChunk, VideoNotes
 from doubtless.rag.books.search import search_books as _search_books_impl
 from doubtless.rag.lecture.search import search_lecture as _search_lecture_impl
-from doubtless.rag.llm import ai_model as ai_model
+from doubtless.rag.llm import ai_model
 from doubtless.storage.repositories import study_repo
 
 

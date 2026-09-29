@@ -78,7 +78,7 @@ def get_upload_config() -> UploadConfigResponse:
     """Return constraints for video uploads."""
     return UploadConfigResponse(
         max_upload_bytes=MAX_UPLOAD_BYTES,
-        allowed_extensions=sorted(list(ALLOWED_EXTENSIONS)),
+        allowed_extensions=sorted(ALLOWED_EXTENSIONS),
     )
 
 

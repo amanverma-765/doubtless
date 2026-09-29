@@ -13,7 +13,7 @@
 [![Logfire](https://img.shields.io/badge/Logfire-Observability-000000.svg?style=flat)](https://logfire.pydantic.dev)
 [![Strict Mypy](https://img.shields.io/badge/mypy-strict_mode-blue.svg?style=flat)](https://mypy-lang.org)
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
-[![Tests](https://img.shields.io/badge/tests-134_passed-success.svg?style=flat)]()
+[![Tests](https://img.shields.io/badge/tests-151_passed-success.svg?style=flat)]()
 
 ---
 
@@ -271,7 +271,7 @@ doubtless/
 │   ├── Dockerfile               # Production multi-stage frontend build
 │   └── package.json             # React 19, Tailwind CSS v4, Vite 8
 │
-├── tests/                       # Automated test suite (96 backend tests)
+├── tests/                       # Automated test suite (98 backend tests)
 │   ├── api/                     # Router endpoint contract tests
 │   ├── core/                    # Telemetry & formatting tests
 │   ├── media/                   # Transcoding, chunking, & probe tests

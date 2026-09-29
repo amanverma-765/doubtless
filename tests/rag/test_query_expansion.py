@@ -63,6 +63,25 @@ async def test_expand_query_fallback() -> None:
 
 
 @pytest.mark.asyncio
+async def test_expand_query_cache_eviction() -> None:
+    """Test cache eviction keeps cache size bounded to _MAX_CACHE_ENTRIES."""
+    from doubtless.rag.query_expansion import _MAX_CACHE_ENTRIES
+
+    with patch(
+        "doubtless.rag.query_expansion._expander_agent.run",
+        side_effect=RuntimeError("timeout"),
+    ):
+        for i in range(_MAX_CACHE_ENTRIES + 5):
+            await expand_query(f"query_{i}")
+
+        assert len(_expansion_cache) == _MAX_CACHE_ENTRIES
+        # Oldest queries (0..4) should have been evicted
+        assert "query_0" not in _expansion_cache
+        assert "query_4" not in _expansion_cache
+        assert f"query_{_MAX_CACHE_ENTRIES + 4}" in _expansion_cache
+
+
+@pytest.mark.asyncio
 async def test_search_lecture_with_expansion() -> None:
     """Test search_lecture expands query and executes batch vector query."""
     mock_collection = MagicMock()

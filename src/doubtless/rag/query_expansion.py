@@ -38,7 +38,8 @@ _expander_agent = Agent[None, ExpandedQueriesPayload](
 )
 
 
-# ponytail: dict cache instead of lru_cache — async functions can't use lru_cache
+# ponytail: bounded cache with FIFO eviction (async functions can't use lru_cache)
+_MAX_CACHE_ENTRIES = 512
 _expansion_cache: dict[str, list[str]] = {}
 
 
@@ -72,5 +73,7 @@ async def expand_query(query: str) -> list[str]:
             exc,
         )
 
+    if len(_expansion_cache) >= _MAX_CACHE_ENTRIES:
+        _expansion_cache.pop(next(iter(_expansion_cache)))
     _expansion_cache[clean_query] = variations
     return variations

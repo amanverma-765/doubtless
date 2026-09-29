@@ -16,6 +16,12 @@
 [![Tests](https://img.shields.io/badge/tests-151_passed-success.svg?style=flat)]()
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
+<br />
+
+<p align="center">
+  <img src="docs/assets/doubt-solver.png" alt="Doubtless Studio - Playhead-Synchronized AI Doubt Solver" width="100%" />
+</p>
+
 ---
 
 ## Overview
@@ -133,6 +139,11 @@ sequenceDiagram
 - **Real-Time Streaming**: Delivers answers token-by-token over HTTP Server-Sent Events (SSE) using Starlette `EventSourceResponse`.
 
 ### 2. Monotonic 4-Stage Ingestion Pipeline
+
+Manage lectures through the central video library dashboard, supporting single-click uploads and real-time transcode progress tracking:
+
+![Video Library](docs/assets/video-library.png)
+
 Coordinated by `PipelineRunner` (`src/doubtless/media/pipeline.py`) across four progressive stages:
 1. **Transcoding (0% – 25%)**: FFprobe container validation, poster frame extraction, and multi-segment HLS VOD packaging (`libx264 -preset veryfast`, 6-second independent GOP segments).
 2. **Transcribing (25% – 70%)**: 16kHz mono AAC extraction at 32 kbps (compressing 1-hour audio to ~14.4 MB). Cloud inference via Groq Whisper API (`whisper-large-v3`) with 10-minute chunking for large files, timestamp offsetting, and anti-hallucination filtering.
@@ -140,9 +151,19 @@ Coordinated by `PipelineRunner` (`src/doubtless/media/pipeline.py`) across four 
 4. **Study Generation (85% – 100%)**: Concurrent execution of Pydantic AI agents producing structured topic chapters, Markdown notes, quizzes, and flashcards.
 
 ### 3. Automated Interactive Study Workspace
+
 - **Topic Chapters**: Timestamped navigation markers allowing students to jump directly to specific sub-topics in the video.
+
+  ![Topic Chapters](docs/assets/topic-chapters.png)
+
 - **Lecture Notes**: Comprehensive Markdown summaries formatted with mathematical formulas, core concepts, and key definitions.
+
+  ![Lecture Notes](docs/assets/lecture-notes.png)
+
 - **Interactive Quiz Engine**: Practice questions with instant answer feedback, option validation, and pedagogical rationale.
+
+  ![Interactive Quiz](docs/assets/interactive-quiz.png)
+
 - **Spaced-Repetition Flashcards**: Interactive 3D flip-cards for rapid concept recall.
 
 ### 4. Enterprise Observability & Reliability
@@ -282,6 +303,8 @@ doubtless/
 │
 ├── Dockerfile                   # Production backend container
 ├── docker-compose.yml           # Full-stack orchestration (CPU-friendly)
+├── docs/                        # Project documentation & screenshots
+│   └── assets/                  # UI screenshots & visual assets
 ├── pyproject.toml               # Python dependencies, Ruff & Mypy configs
 └── README.md                    # Project documentation
 ```

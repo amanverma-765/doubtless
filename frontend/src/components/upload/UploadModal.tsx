@@ -18,6 +18,22 @@ interface UploadModalProps {
   uploadProgress?: number;
 }
 
+function formatDefaultTitle(file: File | null): string {
+  if (!file) return "";
+  const rawName = file.name.replace(/\.[^/.]+$/, "");
+  const cleaned = rawName
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const formatted = cleaned
+    ? cleaned
+        .split(" ")
+        .map((w) => (w ? w.charAt(0).toUpperCase() + w.slice(1) : ""))
+        .join(" ")
+    : rawName;
+  return formatted || rawName;
+}
+
 export const UploadModal: React.FC<UploadModalProps> = ({
   isOpen,
   file,
@@ -26,7 +42,13 @@ export const UploadModal: React.FC<UploadModalProps> = ({
   isUploading = false,
   uploadProgress = 0,
 }) => {
-  const [title, setTitle] = useState("");
+  const [title, setTitle] = useState(() => formatDefaultTitle(file));
+  const [prevFile, setPrevFile] = useState(file);
+  if (file !== prevFile) {
+    setPrevFile(file);
+    setTitle(formatDefaultTitle(file));
+  }
+
   const [maxBytes, setMaxBytes] = useState<number>(DEFAULT_MAX_UPLOAD_BYTES);
   const [allowedExtensions, setAllowedExtensions] = useState<string[]>(
     DEFAULT_ALLOWED_EXTENSIONS
@@ -43,23 +65,6 @@ export const UploadModal: React.FC<UploadModalProps> = ({
       }
     });
   }, []);
-
-  useEffect(() => {
-    if (file) {
-      const rawName = file.name.replace(/\.[^/.]+$/, "");
-      const cleaned = rawName
-        .replace(/[_-]+/g, " ")
-        .replace(/\s+/g, " ")
-        .trim();
-      const formatted = cleaned
-        ? cleaned
-            .split(" ")
-            .map((w) => (w ? w.charAt(0).toUpperCase() + w.slice(1) : ""))
-            .join(" ")
-        : rawName;
-      setTitle(formatted || rawName);
-    }
-  }, [file]);
 
   useEffect(() => {
     if (isOpen && !isUploading) {

@@ -19,6 +19,15 @@ export function useChat(videoId: string | null) {
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const [prevVideoId, setPrevVideoId] = useState(videoId);
+  if (videoId !== prevVideoId) {
+    setPrevVideoId(videoId);
+    setMessages([INITIAL_GREETING]);
+    setIsSending(false);
+    setStatusMessage(null);
+    setError(null);
+  }
+
   const activeVideoIdRef = useRef<string | null>(videoId);
   const abortControllerRef = useRef<AbortController | null>(null);
 
@@ -31,17 +40,8 @@ export function useChat(videoId: string | null) {
       abortControllerRef.current.abort();
       abortControllerRef.current = null;
     }
-    setIsSending(false);
-    setStatusMessage(null);
 
-    if (!videoId) {
-      setMessages([INITIAL_GREETING]);
-      return;
-    }
-
-    // Reset immediately so previous video's chat doesn't linger
-    setMessages([INITIAL_GREETING]);
-    setError(null);
+    if (!videoId) return;
 
     fetchChatHistory(videoId)
       .then((history) => {

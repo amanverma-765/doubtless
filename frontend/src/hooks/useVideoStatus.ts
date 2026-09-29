@@ -11,12 +11,21 @@ interface UseVideoStatusResult {
 }
 
 export function useVideoStatus(videoId?: string | null): UseVideoStatusResult {
+  const targetId = videoId?.trim() || null;
+
   const [status, setStatus] = useState<VideoStatus | null>(null);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isLoading, setIsLoading] = useState<boolean>(() => Boolean(targetId));
   const [isNotFound, setIsNotFound] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
-  const targetId = videoId?.trim() || null;
+  const [prevTargetId, setPrevTargetId] = useState(targetId);
+  if (targetId !== prevTargetId) {
+    setPrevTargetId(targetId);
+    setStatus(null);
+    setIsLoading(Boolean(targetId));
+    setIsNotFound(false);
+    setError(null);
+  }
 
   const poll = useCallback(async () => {
     if (!targetId) {
@@ -27,11 +36,7 @@ export function useVideoStatus(videoId?: string | null): UseVideoStatusResult {
 
     try {
       const current = await fetchVideoStatus(targetId);
-      if (current.state === "idle" && !current.id) {
-        setIsNotFound(true);
-      } else {
-        setIsNotFound(false);
-      }
+      setIsNotFound(current.state === "idle" && !current.id);
       setStatus(current);
       setError(null);
     } catch (err: unknown) {
@@ -43,15 +48,27 @@ export function useVideoStatus(videoId?: string | null): UseVideoStatusResult {
   }, [targetId]);
 
   useEffect(() => {
-    setStatus(null);
-    setIsLoading(Boolean(targetId));
-    setIsNotFound(false);
-    setError(null);
+    if (!targetId) return;
 
-    if (targetId) {
-      poll();
-    }
-  }, [targetId, poll]);
+    let active = true;
+    fetchVideoStatus(targetId)
+      .then((current) => {
+        if (!active) return;
+        setIsNotFound(current.state === "idle" && !current.id);
+        setStatus(current);
+        setError(null);
+        setIsLoading(false);
+      })
+      .catch((err: unknown) => {
+        if (!active) return;
+        setError((err as Error).message || "Unable to reach video service");
+        setIsLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [targetId]);
 
   useEffect(() => {
     if (!targetId || isNotFound) return;

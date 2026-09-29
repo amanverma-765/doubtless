@@ -21,6 +21,12 @@ export const WatchPage: React.FC = () => {
   const playerRef = useRef<MediaPlayerInstance | null>(null);
   const [currentTime, setCurrentTime] = useState<number>(0);
   const [videoTitle, setVideoTitle] = useState<string | null>(null);
+  const [prevVideoId, setPrevVideoId] = useState(videoId);
+  if (videoId !== prevVideoId) {
+    setPrevVideoId(videoId);
+    setVideoTitle(null);
+  }
+
   const [activeTab, setActiveTab] = useState<FeatureTabKey>("doubt");
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState<boolean>(false);
   const [isDeletingVideo, setIsDeletingVideo] = useState<boolean>(false);
@@ -34,29 +40,25 @@ export const WatchPage: React.FC = () => {
 
   const { status, isNotFound } = useVideoStatus(videoId);
 
-  const loadVideoMetadata = useCallback(async () => {
+  useEffect(() => {
     if (!videoId) return;
-    try {
-      const v = await fetchVideoById(videoId);
-      if (v?.title) {
-        setVideoTitle(v.title);
-      }
-    } catch {
-      // Backend may be processing or video details already cached
-    }
-  }, [videoId]);
+    let active = true;
 
-  useEffect(() => {
-    setVideoTitle(null);
-    loadVideoMetadata();
-  }, [videoId, loadVideoMetadata]);
+    fetchVideoById(videoId)
+      .then((v) => {
+        if (!active) return;
+        if (v?.title) {
+          setVideoTitle(v.title);
+        }
+      })
+      .catch(() => {
+        // Backend may be processing or video details already cached
+      });
 
-  // Re-fetch title once video reaches ready status
-  useEffect(() => {
-    if (status?.state === "ready" && !videoTitle) {
-      loadVideoMetadata();
-    }
-  }, [status?.state, videoTitle, loadVideoMetadata]);
+    return () => {
+      active = false;
+    };
+  }, [videoId, status?.state]);
 
   const {
     pendingFile,

@@ -15,8 +15,7 @@ export function useVideoLibrary(): UseVideoLibraryResult {
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
-  const loadVideos = useCallback(async (silent = false) => {
-    if (!silent) setIsLoading(true);
+  const loadVideos = useCallback(async () => {
     try {
       const list = await fetchVideos();
       setVideos(list);
@@ -24,13 +23,34 @@ export function useVideoLibrary(): UseVideoLibraryResult {
     } catch (err: unknown) {
       setError((err as Error).message || "Failed to load videos");
     } finally {
-      if (!silent) setIsLoading(false);
+      setIsLoading(false);
     }
   }, []);
 
-  useEffect(() => {
-    loadVideos();
+  const refresh = useCallback(async () => {
+    setIsLoading(true);
+    await loadVideos();
   }, [loadVideos]);
+
+  useEffect(() => {
+    let active = true;
+    fetchVideos()
+      .then((list) => {
+        if (!active) return;
+        setVideos(list);
+        setError(null);
+        setIsLoading(false);
+      })
+      .catch((err: unknown) => {
+        if (!active) return;
+        setError((err as Error).message || "Failed to load videos");
+        setIsLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const hasTranscoding = videos.some(
     (v) => v.status === "processing" || v.status === "uploading"
@@ -41,7 +61,7 @@ export function useVideoLibrary(): UseVideoLibraryResult {
     if (!hasTranscoding) return;
 
     const interval = setInterval(() => {
-      loadVideos(true);
+      loadVideos();
     }, 1000);
 
     return () => clearInterval(interval);
@@ -54,7 +74,7 @@ export function useVideoLibrary(): UseVideoLibraryResult {
       await apiDeleteVideo(id);
     } catch (err: unknown) {
       // Revert on error
-      await loadVideos(true);
+      await loadVideos();
       throw err;
     }
   };
@@ -63,7 +83,7 @@ export function useVideoLibrary(): UseVideoLibraryResult {
     videos,
     isLoading,
     error,
-    refresh: () => loadVideos(false),
+    refresh,
     deleteVideo,
   };
 }

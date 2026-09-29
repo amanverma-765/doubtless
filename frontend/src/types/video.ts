@@ -40,15 +40,3 @@ export interface UploadConfig {
   max_upload_bytes: number;
   allowed_extensions: string[];
 }
-
-// Backward-compatible re-exports of study types
-export type {
-  VideoChapter,
-  VideoChaptersResponse,
-  VideoNotes,
-  VideoNotesResponse,
-  QuizQuestion,
-  VideoQuizResponse,
-  Flashcard,
-  VideoFlashcardsResponse,
-} from "./study";

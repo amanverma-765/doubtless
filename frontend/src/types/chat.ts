@@ -20,8 +20,6 @@ export interface ChatRequest {
   current_time?: number | null;
 }
 
-export type { FeatureTabKey } from "./study";
-
 export type ChatStreamEvent =
   | { type: "status"; message: string }
   | { type: "token"; delta: string }

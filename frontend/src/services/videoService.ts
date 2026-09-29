@@ -11,9 +11,6 @@ import {
 } from "@/constants/config";
 import { request, parseErrorDetail } from "./client";
 
-// Re-export study APIs for backward compatibility
-export * from "./studyService";
-
 export async function fetchVideos(): Promise<VideoItem[]> {
   return request<VideoItem[]>("/api/v1/videos", { cache: "no-store" });
 }

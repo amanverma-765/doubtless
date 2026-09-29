@@ -26,6 +26,10 @@ async def test_chat_reply_success() -> None:
         )
         assert reply == "Energy is conserved."
 
+        # Ensure message_history does not duplicate the current prompt being submitted
+        history_arg = mock_agent_run.call_args.kwargs.get("message_history", [])
+        assert len(history_arg) == 0
+
     messages = chat_repo.get_messages("vid_reply_test")
     assert len(messages) == 2
     assert messages[0].role == "user"

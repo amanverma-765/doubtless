@@ -112,12 +112,12 @@ async def chat_stream(
         v = video_repo.get_video(video_id)
         video_title = v.title if v else "Lecture Video"
 
-    # 1. Save user inquiry
-    _safe_add_message(video_id, role="user", content=question)
-
-    # 2. Build history and enriched prompt
+    # 1. Build history and enriched prompt before persisting current question
     history = _build_chat_history(video_id, limit=6)
     prompt, deps = _build_chat_prompt(video_id, current_time, question)
+
+    # 2. Save user inquiry
+    _safe_add_message(video_id, role="user", content=question)
 
     accumulated_tokens: list[str] = []
     saved = False
@@ -261,12 +261,12 @@ async def chat_reply(
         v = video_repo.get_video(video_id)
         video_title = v.title if v else "Lecture Video"
 
-    # 1. Save user inquiry
-    _safe_add_message(video_id, role="user", content=question)
-
-    # 2. Build history and enriched prompt
+    # 1. Build history and enriched prompt before persisting current question
     history = _build_chat_history(video_id, limit=6)
     prompt, deps = _build_chat_prompt(video_id, current_time, question)
+
+    # 2. Save user inquiry
+    _safe_add_message(video_id, role="user", content=question)
 
     try:
         agent_result = await rag_agent.run(

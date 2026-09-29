@@ -47,14 +47,17 @@ def chunk_transcript(
                     text=text,
                 )
             )
-        elif text and chunks:
-            # Append trailing short speech to the previous chunk
-            prev = chunks[-1]
-            chunks[-1] = LectureChunk(
-                video_id=video_id,
-                start_time=prev.start_time,
-                end_time=current_segments[-1].end,
-                text=f"{prev.text} {text}".strip(),
-            )
+        elif chunks and len(current_segments) > 1:
+            # Append only newly arrived trailing speech (excluding the overlap segment)
+            new_segments = current_segments[1:]
+            new_text = " ".join(s.text for s in new_segments).strip()
+            if new_text:
+                prev = chunks[-1]
+                chunks[-1] = LectureChunk(
+                    video_id=video_id,
+                    start_time=prev.start_time,
+                    end_time=new_segments[-1].end,
+                    text=f"{prev.text} {new_text}".strip(),
+                )
 
     return chunks

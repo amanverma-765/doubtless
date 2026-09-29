@@ -42,3 +42,17 @@ def test_chunk_transcript_merges_trailing_short_segments() -> None:
     assert chunks[0].start_time == 0.0
     assert chunks[0].end_time == 48.0
     assert "Thank you." in chunks[0].text
+
+
+def test_chunk_transcript_does_not_duplicate_boundary_overlap() -> None:
+    """Ensure boundary overlap segment is not duplicated in final chunk."""
+    segments = [
+        TranscriptSegment(start=0.0, end=40.0, text="Segment 1."),
+        TranscriptSegment(start=40.0, end=50.0, text="Segment 2."),
+    ]
+    chunks = chunk_transcript("v1", segments, target_duration=45.0, min_duration=20.0)
+    assert len(chunks) == 1
+    assert chunks[0].start_time == 0.0
+    assert chunks[0].end_time == 50.0
+    # Must appear exactly once, not duplicated as 'Segment 2. Segment 2.'
+    assert chunks[0].text == "Segment 1. Segment 2."

@@ -105,18 +105,21 @@ describe("videoService", () => {
 
   it("uploadVideo sends file and tracks progress via XHR", async () => {
     let progressValue = 0;
-    let instance: any = null;
 
     class MockXHR {
+      static lastInstance: MockXHR | null = null;
       open = vi.fn();
       send = vi.fn().mockImplementation(() => {
-        if (this.upload?.onprogress) {
-          this.upload.onprogress({ lengthComputable: true, loaded: 50, total: 100 });
+        const inst = MockXHR.lastInstance;
+        if (inst?.upload?.onprogress) {
+          inst.upload.onprogress({ lengthComputable: true, loaded: 50, total: 100 });
         }
-        this.status = 200;
-        this.responseText = JSON.stringify({ id: "vid-uploaded" });
-        if (this.onload) {
-          this.onload();
+        if (inst) {
+          inst.status = 200;
+          inst.responseText = JSON.stringify({ id: "vid-uploaded" });
+          if (inst.onload) {
+            inst.onload();
+          }
         }
       });
       upload: any = {};
@@ -128,7 +131,7 @@ describe("videoService", () => {
       responseText = "";
 
       constructor() {
-        instance = this;
+        MockXHR.lastInstance = this;
       }
     }
     vi.stubGlobal("XMLHttpRequest", MockXHR);
@@ -142,7 +145,7 @@ describe("videoService", () => {
       }
     );
 
-    expect(instance.open).toHaveBeenCalledWith(
+    expect(MockXHR.lastInstance!.open).toHaveBeenCalledWith(
       "PUT",
       expect.stringContaining("name=lecture.mp4&title=My%20Lecture")
     );
@@ -151,9 +154,8 @@ describe("videoService", () => {
   });
 
   it("uploadVideo aborts when AbortSignal triggers", async () => {
-    let instance: any = null;
-
     class MockXHR {
+      static lastInstance: MockXHR | null = null;
       open = vi.fn();
       send = vi.fn();
       upload: any = {};
@@ -165,7 +167,7 @@ describe("videoService", () => {
       responseText = "";
 
       constructor() {
-        instance = this;
+        MockXHR.lastInstance = this;
       }
     }
     vi.stubGlobal("XMLHttpRequest", MockXHR);
@@ -177,7 +179,7 @@ describe("videoService", () => {
     controller.abort();
 
     await expect(promise).rejects.toThrow(/canceled/i);
-    expect(instance.abort).toHaveBeenCalled();
+    expect(MockXHR.lastInstance!.abort).toHaveBeenCalled();
   });
 
   it("uploadVideo rejects on HTTP error", async () => {

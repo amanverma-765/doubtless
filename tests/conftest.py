@@ -11,7 +11,7 @@ from doubtless.api.app import app
 from doubtless.storage import connection
 
 
-@pytest.fixture
+@pytest.fixture(autouse=True)
 def temp_db(tmp_path: Path) -> Generator[Path]:
     """Provide an isolated temporary SQLite database path for testing."""
     test_db = tmp_path / "test_doubtless.db"
@@ -27,5 +27,8 @@ def temp_db(tmp_path: Path) -> Generator[Path]:
 @pytest.fixture
 def client(temp_db: Path) -> Generator[TestClient]:
     """Provide a FastAPI TestClient configured with an isolated test database."""
-    with TestClient(app) as test_client:
+    with (
+        patch("doubtless.rag.embeddings.get_embedding_model"),
+        TestClient(app) as test_client,
+    ):
         yield test_client

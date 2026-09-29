@@ -71,8 +71,13 @@ async def test_search_lecture_with_expansion() -> None:
         "metadatas": [[{"video_id": "vid1", "start_time": 650.0, "end_time": 680.0}]],
         "distances": [[0.85]],
     }
+    mock_run = MagicMock()
+    mock_run.output = ExpandedQueriesPayload(
+        queries=["EDTA hexadentate ligand", "coordination compounds"]
+    )
 
     with (
+        patch.object(_expander_agent, "run", return_value=mock_run),
         patch(
             "doubtless.rag.lecture.search.get_lectures_collection",
             return_value=mock_collection,
@@ -99,8 +104,13 @@ async def test_search_books_with_expansion() -> None:
         ],
         "distances": [[0.75, 1.45]],
     }
+    mock_run = MagicMock()
+    mock_run.output = ExpandedQueriesPayload(
+        queries=["ligands", "coordination complexes"]
+    )
 
     with (
+        patch.object(_expander_agent, "run", return_value=mock_run),
         patch(
             "doubtless.rag.books.search.get_books_collection",
             return_value=mock_collection,

@@ -8,6 +8,22 @@ from chromadb.api.models.Collection import Collection
 from doubtless.rag.embeddings import embed_texts
 from doubtless.rag.query_expansion import expand_query
 
+RRF_K: int = 60
+
+
+def reciprocal_rank_fusion[K: Hashable](
+    rankings: list[list[K]],
+    k: int = 30,
+    rrf_k: int = RRF_K,
+) -> list[tuple[K, float]]:
+    """Fuse multiple ranked candidate key lists via Reciprocal Rank Fusion."""
+    scores: dict[K, float] = {}
+    for ranking in rankings:
+        for position, key in enumerate(ranking, start=1):
+            scores[key] = scores.get(key, 0.0) + 1.0 / (rrf_k + position)
+    ordered = sorted(scores.items(), key=lambda pair: -pair[1])
+    return ordered[:k]
+
 
 async def vector_search[T](
     *,

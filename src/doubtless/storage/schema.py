@@ -90,6 +90,31 @@ CREATE TABLE IF NOT EXISTS video_flashcards (
 );
 """
 
+NCERT_CHUNKS_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS ncert_chunks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    chunk_key TEXT UNIQUE NOT NULL,
+    grade INTEGER NOT NULL,
+    book TEXT NOT NULL,
+    chapter INTEGER NOT NULL,
+    page INTEGER NOT NULL,
+    text TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+"""
+
+NCERT_CHUNKS_INDEX_SQL = """
+CREATE INDEX IF NOT EXISTS idx_ncert_chunks_key
+ON ncert_chunks (chunk_key);
+"""
+
+NCERT_CHUNKS_FTS_SQL = """
+CREATE VIRTUAL TABLE IF NOT EXISTS ncert_chunks_fts USING fts5(
+    text,
+    tokenize='unicode61'
+);
+"""
+
 ALL_DDL_STATEMENTS: tuple[str, ...] = (
     VIDEOS_TABLE_SQL,
     MESSAGES_TABLE_SQL,
@@ -100,6 +125,9 @@ ALL_DDL_STATEMENTS: tuple[str, ...] = (
     VIDEO_NOTES_TABLE_SQL,
     VIDEO_QUIZZES_TABLE_SQL,
     VIDEO_FLASHCARDS_TABLE_SQL,
+    NCERT_CHUNKS_TABLE_SQL,
+    NCERT_CHUNKS_INDEX_SQL,
+    NCERT_CHUNKS_FTS_SQL,
 )
 
 

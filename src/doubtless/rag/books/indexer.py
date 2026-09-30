@@ -13,6 +13,7 @@ from doubtless.config import BOOKS_DIR
 from doubtless.rag.books.clean import clean_text, decode_glyphs, strip_running_heads
 from doubtless.rag.books.download import BY_FOLDER, download_books
 from doubtless.rag.embeddings import embed_texts, get_tokenizer
+from doubtless.storage.repositories import ncert_repo
 from doubtless.storage.vector_store import get_books_collection
 
 
@@ -99,7 +100,7 @@ def _chunk(
 
 
 def _ingest(chunks: list[Chunk], vectors: NDArray[np.float32]) -> None:
-    """Upsert chunks, their embeddings, and metadata into the books vector store."""
+    """Upsert chunks and embeddings into vector store and FTS5 index."""
     assert len(chunks) == len(vectors)
     get_books_collection().upsert(
         ids=[f"{c.grade}/{c.book}/{c.chapter}/{c.index}" for c in chunks],
@@ -107,6 +108,7 @@ def _ingest(chunks: list[Chunk], vectors: NDArray[np.float32]) -> None:
         documents=[c.text for c in chunks],
         metadatas=[c.model_dump(exclude={"text"}) for c in chunks],
     )
+    ncert_repo.insert_chunks(chunks)
 
 
 def build_index(books_dir: Path = BOOKS_DIR) -> None:

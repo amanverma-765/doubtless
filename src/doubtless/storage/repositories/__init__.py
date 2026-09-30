@@ -2,6 +2,7 @@
 
 from doubtless.storage.repositories import (
     chat_repo,
+    ncert_repo,
     study_repo,
     transcript_repo,
     video_repo,
@@ -9,6 +10,7 @@ from doubtless.storage.repositories import (
 
 __all__ = [
     "chat_repo",
+    "ncert_repo",
     "study_repo",
     "transcript_repo",
     "video_repo",

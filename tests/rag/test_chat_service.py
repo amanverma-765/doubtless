@@ -82,3 +82,46 @@ async def test_chat_stream_fallback_on_error() -> None:
     assert len(messages) == 2
     assert messages[0].role == "user"
     assert messages[1].role == "assistant"
+
+
+@pytest.mark.asyncio
+async def test_chat_reply_with_multimodal_video_frame() -> None:
+    """When a video frame is extracted, prompt includes BinaryContent image part."""
+    from pathlib import Path
+
+    from pydantic_ai import BinaryContent
+
+    video_repo.create_video(
+        "vid_frame_test", "Physics Optics", "optics.mp4", status="ready"
+    )
+
+    mock_run_result = MagicMock()
+    mock_run_result.output = "The ray diagram shows refraction."
+
+    with (
+        patch(
+            "doubtless.storage.file_storage.find_video_media_path",
+            return_value=Path("/tmp/optics.mp4"),
+        ),
+        patch(
+            "doubtless.rag.chat_service.extract_frame_at_timestamp",
+            return_value=b"\xff\xd8\xff\xe0fake_jpeg",
+        ),
+        patch(
+            "doubtless.rag.chat_service.rag_agent.run", new_callable=AsyncMock
+        ) as mock_agent_run,
+    ):
+        mock_agent_run.return_value = mock_run_result
+
+        reply = await chat_reply(
+            "vid_frame_test", "What is on screen?", current_time=45.0
+        )
+        assert reply == "The ray diagram shows refraction."
+
+        prompt_arg = mock_agent_run.call_args.args[0]
+        assert isinstance(prompt_arg, list)
+        assert len(prompt_arg) == 2
+        assert "ON-SCREEN VIDEO FRAME" in prompt_arg[0]
+        assert isinstance(prompt_arg[1], BinaryContent)
+        assert prompt_arg[1].data == b"\xff\xd8\xff\xe0fake_jpeg"
+        assert prompt_arg[1].media_type == "image/jpeg"

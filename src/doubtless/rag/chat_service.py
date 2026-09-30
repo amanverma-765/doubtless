@@ -7,7 +7,7 @@ from collections.abc import AsyncGenerator
 from typing import Any, Literal
 
 import logfire
-from pydantic_ai import AgentRunResultEvent, UsageLimits
+from pydantic_ai import AgentRunResultEvent, BinaryContent, UsageLimits
 from pydantic_ai.exceptions import UsageLimitExceeded
 from pydantic_ai.messages import (
     FunctionToolCallEvent,
@@ -23,7 +23,9 @@ from pydantic_ai.messages import (
 )
 
 from doubtless.core.formatting import format_timestamp
+from doubtless.media.transcoder import extract_frame_at_timestamp
 from doubtless.rag.agent import DoubtContext, rag_agent
+from doubtless.storage import file_storage
 from doubtless.storage.repositories import chat_repo, study_repo, video_repo
 from doubtless.study.context import get_transcript_dialogue_window
 
@@ -72,8 +74,8 @@ def _build_chat_prompt(
     video_id: str,
     current_time: float,
     question: str,
-) -> tuple[str, DoubtContext]:
-    """Enrich the student question with playhead dialogue, chapter, and timestamp."""
+) -> tuple[str | list[str | BinaryContent], DoubtContext]:
+    """Enrich doubt with playhead dialogue, chapter, time, and video frame."""
     ts_formatted = format_timestamp(current_time)
     dialogue = get_transcript_dialogue_window(
         video_id,
@@ -88,6 +90,18 @@ def _build_chat_prompt(
     ]
     if chapter:
         context_lines.append(f"[CURRENT TOPIC / CHAPTER: {chapter.title}]")
+
+    media_path = file_storage.find_video_media_path(video_id)
+    frame_bytes: bytes | None = None
+    if media_path:
+        frame_bytes = extract_frame_at_timestamp(media_path, current_time)
+
+    if frame_bytes:
+        context_lines.append(
+            f"[ON-SCREEN VIDEO FRAME: Attached JPEG frame captured at {ts_formatted}. "
+            "Inspect board notes, slides, equations, and diagrams shown on screen.]"
+        )
+
     if dialogue:
         context_lines.append(f"[SPOKEN DIALOGUE AROUND {ts_formatted}]:\n{dialogue}")
     else:
@@ -96,9 +110,16 @@ def _build_chat_prompt(
             "Teacher is silent, writing on board, or working through problems.]"
         )
 
-    prompt = f"{'\n'.join(context_lines)}\n\nStudent Doubt / Question: {question}"
+    prompt_text = f"{'\n'.join(context_lines)}\n\nStudent Doubt / Question: {question}"
     deps = DoubtContext(video_id=video_id, current_time=current_time)
-    return prompt, deps
+
+    if frame_bytes:
+        return [
+            prompt_text,
+            BinaryContent(data=frame_bytes, media_type="image/jpeg"),
+        ], deps
+
+    return prompt_text, deps
 
 
 async def chat_stream(

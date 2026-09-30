@@ -1,6 +1,6 @@
 # Doubtless
 
-> **An interactive video lecture platform providing real-time, playhead-synchronized AI doubt resolution, dual-source vector RAG, and automated study workspaces.**
+> **An interactive video lecture platform providing real-time, playhead-synchronized multimodal AI doubt resolution, BM25 + dense hybrid textbook RAG, and automated study workspaces.**
 
 [![Python 3.14+](https://img.shields.io/badge/python-3.14+-3776AB.svg?style=flat&logo=python&logoColor=white)](https://python.org)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.141+-009688.svg?style=flat&logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
@@ -9,11 +9,12 @@
 [![Tailwind CSS v4](https://img.shields.io/badge/Tailwind_CSS-v4-06B6D4.svg?style=flat&logo=tailwindcss&logoColor=white)](https://tailwindcss.com)
 [![Celery](https://img.shields.io/badge/Celery-5.6-37814A.svg?style=flat&logo=celery&logoColor=white)](https://docs.celeryq.dev)
 [![ChromaDB](https://img.shields.io/badge/ChromaDB-1.5-FF4F00.svg?style=flat)](https://trychroma.com)
+[![Hybrid RAG: BM25 + Dense RRF](https://img.shields.io/badge/NCERT_RAG-BM25_%2B_Dense_RRF-blue.svg)](src/doubtless/rag/books/)
 [![Groq](https://img.shields.io/badge/Groq_Whisper-Large_V3-F05A28.svg?style=flat)](https://groq.com)
 [![Logfire](https://img.shields.io/badge/Logfire-Observability-000000.svg?style=flat)](https://logfire.pydantic.dev)
 [![Strict Mypy](https://img.shields.io/badge/mypy-strict_mode-blue.svg?style=flat)](https://mypy-lang.org)
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
-[![Tests](https://img.shields.io/badge/tests-151_passed-success.svg?style=flat)]()
+[![Tests](https://img.shields.io/badge/tests-160_passed-success.svg?style=flat)]()
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 <br />
@@ -29,8 +30,8 @@
 Traditional recorded video lectures are passive and unidirectional. When students get stuck on an equation or concept at timestamp `14:32`, they must pause, leave the video player, search external forums, lose their flow, or wait for office hours.
 
 **Doubtless transforms passive video consumption into an active, context-aware learning workspace:**
-1. **Playhead-Grounded Doubt Solving**: Students ask questions at any point in the video. The system captures the temporal dialogue window immediately surrounding the current playhead timestamp (e.g., *"What is this equation on the screen?"* or *"Why did the teacher divide by zero here?"*).
-2. **Dual-Grounded RAG Engine**: Combines the instructor's spoken dialogue with official textbook knowledge (NCERT science and math indices) via vector search (`Qwen3-Embedding-0.6B` + cosine similarity in ChromaDB) and bilingual query expansion (Hindi/Hinglish/English).
+1. **Playhead-Grounded Multimodal Doubt Solving**: Students ask questions at any point in the video. The system captures both the temporal dialogue window and the on-screen video frame at the active playhead timestamp via on-demand FFmpeg extraction (e.g. reading blackboard equations, slides, chemical structures, or code during silent or active teaching).
+2. **Dual-Grounded Hybrid RAG Engine**: Combines instructor spoken dialogue with official textbook knowledge (NCERT science and math indices) via hybrid search (SQLite FTS5 BM25 lexical matching + ChromaDB dense vector embeddings fused via Reciprocal Rank Fusion, $k=60$) with bilingual query expansion (Hindi/Hinglish/English).
 3. **Automated Study Artifact Generation**: Transforms raw lecture speech into interactive Markdown study notes, timestamped topic chapters with direct video seeking, multiple-choice quizzes with explanations, and spaced-repetition flashcards.
 4. **Adaptive HLS Streaming**: Transcodes video into multi-segment HTTP Live Streaming (HLS VOD) playlists for instant seeking and responsive playback across devices.
 
@@ -49,8 +50,9 @@ flowchart TD
 
     subgraph API["FastAPI Transport Layer"]
         UploadRouter["POST /api/videos/upload"]
-        ChatRouter["POST /api/chat/{id}/stream (SSE)"]
+        ChatRouter["POST /api/chat (SSE Stream)"]
         StreamRouter["GET /hls/{id}/index.m3u8"]
+        FrameExtract["FFmpeg Frame Extractor<br/>(In-memory JPEG @ playhead timestamp)"]
     end
 
     subgraph Worker["Asynchronous Queue (Celery & Redis)"]
@@ -61,15 +63,15 @@ flowchart TD
     subgraph Pipeline["4-Stage Ingestion Pipeline (PipelineRunner)"]
         Stage1["1. Transcoding (0-25%)<br/>FFmpeg HLS VOD (.m3u8 + 6s .ts segments)<br/>Thumbnail poster extraction (JPEG)"]
         Stage2["2. Transcribing (25-70%)<br/>16kHz mono AAC (32 kbps in .m4a)<br/>Groq Whisper API (whisper-large-v3)<br/>Chunking & hallucination filters"]
-        Stage3["3. Indexing (70-85%)<br/>SQLite dialogue segments<br/>45s sliding semantic chunks<br/>ChromaDB vector embedding"]
+        Stage3["3. Indexing (70-85%)<br/>SQLite dialogue segments & FTS5 index<br/>45s sliding semantic chunks<br/>ChromaDB vector embedding"]
         Stage4["4. Study Gen (85-100%)<br/>Pydantic AI Agents<br/>Chapters, Notes, Quizzes, Cards"]
     end
 
     subgraph Storage["Persistence & External Services"]
         GroqAPI["Groq Cloud API"]
-        ChromaStore[("ChromaDB Vectors<br/>(Lectures & NCERT)")]
-        SQLiteDB[("SQLite Database<br/>(WAL Mode)")]
-        FileStore[("Local Filesystem<br/>(HLS, Posters, Audio)")]
+        ChromaStore[("ChromaDB Vectors<br/>(Lectures & NCERT Dense)")]
+        SQLiteDB[("SQLite Database (WAL Mode)<br/>Dialogue, Study Artifacts & FTS5 BM25")]
+        FileStore[("Local Filesystem<br/>(Source Videos, HLS, Posters)")]
     end
 
     Upload --> UploadRouter
@@ -88,6 +90,8 @@ flowchart TD
     Player <--> StreamRouter
     StreamRouter <--> FileStore
     ChatUI <--> ChatRouter
+    ChatRouter --> FrameExtract
+    FrameExtract <--> FileStore
     Workspace <--> SQLiteDB
 ```
 
@@ -95,7 +99,11 @@ flowchart TD
 
 ## Core Features
 
-### 1. Intelligent Doubt Solver (RAG Agent)
+### 1. Intelligent Doubt Solver (Multimodal RAG Agent)
+
+Playhead-synchronized doubt resolution grounding student inquiries across on-screen video frames, temporal dialogue, and canonical textbooks:
+
+![Playhead-Synchronized AI Doubt Solver](docs/assets/doubt-solver.png)
 
 ```mermaid
 sequenceDiagram
@@ -104,45 +112,57 @@ sequenceDiagram
     participant UI as React 19 Studio
     participant API as FastAPI Chat Stream
     participant Svc as ChatService & Agent
-    participant SQLite as SQLite DB
+    participant FFmpeg as FFmpeg Extractor
+    participant SQLite as SQLite DB (FTS5)
     participant Chroma as ChromaDB Vector Store
-    participant LLM as LLM (NineRouter)
+    participant LLM as Multimodal LLM (NineRouter)
 
-    Student->>UI: "Why did we divide by zero here?"
-    UI->>API: POST /api/chat/{video_id}/stream (query + playhead_seconds=872.0)
-    API->>Svc: chat_stream(video_id, query, playhead_seconds)
-    Svc->>SQLite: get_transcript_segments_window(872.0, before=60s, after=15s)
-    SQLite-->>Svc: Spoken dialogue window [-60s ... +15s]
+    Student->>UI: "What is written on the board here?"
+    UI->>API: POST /api/chat (query + current_time=872.0)
+    API->>Svc: chat_stream(video_id, query, current_time)
+    
+    par Temporal Grounding & Frame Capture
+        Svc->>SQLite: get_transcript_dialogue_window(872.0, before=90s, after=15s)
+        SQLite-->>Svc: Spoken dialogue window [-90s ... +15s]
+        Svc->>FFmpeg: extract_frame_at_timestamp(video_path, 872.0)
+        FFmpeg-->>Svc: On-screen JPEG frame bytes (~20KB in-memory)
+    end
     
     rect rgb(20, 24, 39)
-        Note over Svc,Chroma: Dual-Source RAG Tool Calls
+        Note over Svc,Chroma: Dual-Source Hybrid RAG Tool Calls
         Svc->>LLM: Bilingual query expansion (Hinglish/Hindi -> Concepts)
         LLM-->>Svc: Expanded search terms
         Svc->>Chroma: search_lecture(video_id, expanded_query)
         Chroma-->>Svc: Top lecture dialogue chunks
-        Svc->>Chroma: search_books(expanded_query)
-        Chroma-->>Svc: NCERT textbook formulas & theorems
+        par Hybrid NCERT Textbook Retrieval
+            Svc->>SQLite: search_bm25(expanded_query) [FTS5 inverted index]
+            Svc->>Chroma: vector_search(expanded_query) [Dense embeddings]
+        end
+        Svc->>Svc: Reciprocal Rank Fusion (RRF, k=60) + Page Deduplication
     end
 
-    Svc->>LLM: Prompt with playhead context + retrieved textbook passages
+    Svc->>LLM: Multimodal Prompt (Dialogue + On-Screen JPEG Frame + Hybrid NCERT Passages)
     LLM-->>API: Stream token chunks
     API-->>UI: Server-Sent Events (SSE) stream
     UI-->>Student: Render markdown answer + seekable timestamp links
 ```
 
-- **Temporal Playhead Grounding**: Injects dialogue from a window of `-60s` to `+15s` relative to the current video playhead. The agent immediately understands deictic references (*"this derivation"*, *"the term on the right"*).
-- **Dual-Domain Knowledge Retrieval**:
+- **Multimodal Video Frame Grounding**: On-demand extraction of the on-screen video frame at the active playhead timestamp via FFmpeg (`extract_frame_at_timestamp`), piped directly to memory as a JPEG with $\le 100\text{ms}$ latency and injected into Pydantic AI via `BinaryContent`. The agent can inspect and explain blackboard writings, slides, formulas, chemical diagrams, and code even during long pauses or silent derivations.
+- **Temporal Dialogue Window**: Injects dialogue from a window of `-90s` to `+15s` relative to the current video playhead. The agent immediately understands deictic references (*"this derivation"*, *"the term on the right"*).
+- **Dual-Domain Hybrid Knowledge Retrieval**:
   - `search_lecture`: Searches the specific video's spoken dialogue chunks in ChromaDB.
-  - `search_books`: Searches canonical NCERT STEM textbook passage vectors to verify definitions, theorems, and formulas.
+  - `search_books`: Dual-arm retrieval fusing SQLite FTS5 lexical BM25 matching with ChromaDB dense vector search using Reciprocal Rank Fusion ($RRF$, $k=60$). Backed by empirical benchmark evaluation (`ncert-rag-evals`), this hybrid approach achieves an **86.9% R@5 recall rate (+8.5% gain)** at sub-10ms latency.
   - `get_chapter_notes`: Reads high-level chapter outlines to ground questions within the overall lecture syllabus.
 - **Bilingual Query Expansion**: Employs an LLM expansion step that rewrites student queries in Hinglish/Hindi into standardized conceptual search phrases across both languages before vector embedding.
-- **Real-Time Streaming**: Delivers answers token-by-token over HTTP Server-Sent Events (SSE) using Starlette `EventSourceResponse`.
+- **Real-Time Streaming**: Delivers answers token-by-token over HTTP Server-Sent Events (SSE) using Starlette `StreamingResponse`.
 
-### 2. Monotonic 4-Stage Ingestion Pipeline
+### 2. Central Video Library & Ingestion Dashboard
 
-Manage lectures through the central video library dashboard, supporting single-click uploads and real-time transcode progress tracking:
+Manage lectures through the central video library dashboard, supporting single-click uploads, processing status monitoring, and direct workspace access:
 
-![Video Library](docs/assets/video-library.png)
+![Video Library Dashboard](docs/assets/video-library.png)
+
+### 3. Monotonic 4-Stage Ingestion Pipeline
 
 Coordinated by `PipelineRunner` (`src/doubtless/media/pipeline.py`) across four progressive stages:
 1. **Transcoding (0% – 25%)**: FFprobe container validation, poster frame extraction, and multi-segment HLS VOD packaging (`libx264 -preset veryfast`, 6-second independent GOP segments).
@@ -150,23 +170,29 @@ Coordinated by `PipelineRunner` (`src/doubtless/media/pipeline.py`) across four 
 3. **Indexing (70% – 85%)**: Relational dialogue storage in SQLite, 45-second sliding window chunk aggregation, and vector embedding into ChromaDB using `Qwen3-Embedding-0.6B`.
 4. **Study Generation (85% – 100%)**: Concurrent execution of Pydantic AI agents producing structured topic chapters, Markdown notes, quizzes, and flashcards.
 
-### 3. Automated Interactive Study Workspace
+### 4. Automated Interactive Study Workspace
 
-- **Topic Chapters**: Timestamped navigation markers allowing students to jump directly to specific sub-topics in the video.
+#### Topic Chapters
+Timestamped navigation markers allowing students to jump directly to specific sub-topics in the video.
 
-  ![Topic Chapters](docs/assets/topic-chapters.png)
+![Topic Chapters](docs/assets/topic-chapters.png)
 
-- **Lecture Notes**: Comprehensive Markdown summaries formatted with mathematical formulas, core concepts, and key definitions.
+#### Lecture Notes
+Comprehensive Markdown summaries formatted with mathematical formulas, core concepts, and key definitions.
 
-  ![Lecture Notes](docs/assets/lecture-notes.png)
+![Lecture Notes](docs/assets/lecture-notes.png)
 
-- **Interactive Quiz Engine**: Practice questions with instant answer feedback, option validation, and pedagogical rationale.
+#### Interactive Quiz Engine
+Practice questions with instant answer feedback, option validation, and pedagogical rationale.
 
-  ![Interactive Quiz](docs/assets/interactive-quiz.png)
+![Interactive Quiz](docs/assets/interactive-quiz.png)
 
-- **Spaced-Repetition Flashcards**: Interactive 3D flip-cards for rapid concept recall.
+#### Spaced-Repetition Flashcards
+Interactive 3D flip-cards for rapid concept recall.
 
-### 4. Enterprise Observability & Reliability
+![Spaced-Repetition Flashcards](docs/assets/flashcards.png)
+
+### 5. Enterprise Observability & Reliability
 - **Distributed Tracing**: OpenTelemetry instrumentation integrated with Logfire across FastAPI routes, Celery background tasks, Redis, SQLite, and external HTTP clients.
 - **HLS Static Cache Control**: Custom `HLSStaticFiles` server enforcing `Cache-Control: public, max-age=31536000, immutable` on video transport stream segments (`.ts`) and `no-cache` on live manifest playlists (`.m3u8`).
 - **Cooperative Cancellation**: Pipeline tasks periodically poll Redis cancellation flags and SQLite state, cleanly tearing down partial HLS directories, vector embeddings, and database records via multi-layer cascade delete.
@@ -203,11 +229,12 @@ Coordinated by `PipelineRunner` (`src/doubtless/media/pipeline.py`) across four 
 | **API Framework** | FastAPI + Uvicorn | Asynchronous presentation layer, dependency injection, and SSE streaming. |
 | **Task Queue** | Celery + Redis | Decouples heavy FFmpeg transcoding and AI generation from the HTTP request cycle. |
 | **Speech-to-Text** | Groq Whisper API | High-throughput cloud inference (`whisper-large-v3`) processing a 1-hour lecture in ~15-20s without requiring dedicated local GPU hardware. |
-| **Agent Framework** | Pydantic AI | Type-safe, structured LLM agents with explicit tool calling and system prompts. |
+| **Agent Framework** | Pydantic AI | Type-safe, structured multimodal LLM agents with explicit tool calling and image content injection. |
 | **Vector Database** | ChromaDB | Embedded vector storage with cosine distance metric for lecture chunks and textbook passages. |
+| **Hybrid Search** | SQLite FTS5 + Dense RRF | Inverted index BM25 search combined with dense vector embeddings via Reciprocal Rank Fusion ($k=60$) for +8.5% recall gain. |
 | **Embedding Model** | `Qwen/Qwen3-Embedding-0.6B` | Token-efficient 1024-dimension bilingual embeddings running efficiently on CPU or CUDA. |
 | **Relational Storage** | SQLite (WAL mode) | Embedded, zero-configuration relational storage with Write-Ahead Logging and Foreign Key cascade enforcement. |
-| **Media Engine** | FFmpeg / FFprobe | Hardware-independent audio extraction, HLS VOD segmentation, and container probing. |
+| **Media Engine** | FFmpeg / FFprobe | Hardware-independent audio extraction, HLS VOD segmentation, container probing, and on-demand frame extraction. |
 | **Frontend Framework** | React 19 + TypeScript | Component-driven UI leveraging React 19 primitives, Vite, and strict TypeScript types. |
 | **Styling & Icons** | Tailwind CSS v4 + Lucide | Responsive dark-mode glassmorphic interface with modern utility-first CSS. |
 | **Video Player** | `@vidstack/react` | Modern HTML5/HLS video player with programmatic playhead seeking and playback controls. |
@@ -222,15 +249,23 @@ Coordinated by `PipelineRunner` (`src/doubtless/media/pipeline.py`) across four 
 - **Trade-off identified**: Local Whisper required heavy CUDA runtime libraries (cuBLAS, cuDNN), inflated Docker images by >3 GB, consumed significant VRAM, and ran slowly on CPU-only machines.
 - **Solution**: Migrated to Groq Whisper API (`whisper-large-v3`). Audio is extracted as 16kHz mono AAC at 32 kbps (`.m4a`), bringing 1-hour audio to ~14.4 MB (well under Groq's 25 MB payload limit). Inference runs in ~2-3 seconds, and the container runs on any machine with zero discrete GPU (dGPU) requirements.
 
-### 2. Temporal Dialogue Windows + Semantic Vector Search
-- **Trade-off identified**: Standard RAG solely retrieves top-$k$ semantic chunks based on query similarity. If a student asks *"Why is this negative?"*, pure vector similarity fails because the query contains no domain keywords.
-- **Solution**: Doubtless injects the temporal transcript window around the video playhead (`t - 60s` to `t + 15s`) directly into the agent's context alongside vector search results, resolving demonstratives and conversational context accurately.
+### 2. Multimodal Video Frame Grounding vs. Audio-Only Transcription
+- **Trade-off identified**: Pure speech transcripts leave the AI completely blind when instructors write on the blackboard in silence, point to slide graphics, or solve equations without reading every symbol aloud. Students asking *"What is this equation on screen?"* received refusals or hallucinations.
+- **Solution**: Implemented on-demand server-side FFmpeg frame extraction (`extract_frame_at_timestamp`) piping scaled JPEG bytes ($\le 960\text{px}$, ~20KB) directly into memory in $\le 100\text{ms}$. Injected as `pydantic_ai.BinaryContent` into the doubt-solving agent, visually grounding doubts on blackboard handwriting, slide text, circuit diagrams, and mathematical derivations without persisting heavy base64 strings in the database.
 
-### 3. SQLite in WAL Mode vs. External Postgres
+### 3. Hybrid BM25 FTS5 + Dense RRF vs. Pure Vector Search for NCERT Textbooks
+- **Trade-off identified**: Pure dense vector embeddings frequently fail on technical and chemical queries (`phenolphthalein`, `SN2 mechanism`, `discriminant b² - 4ac`, specific law names) because semantic similarity confuses exact terminology with related high-level concepts.
+- **Solution**: Adopted the empirical benchmark findings from `ncert-rag-evals`: pairing an SQLite FTS5 lexical index (`unicode61` tokenizer with stopword-filtered `OR` query rewriting) and ChromaDB dense embeddings, fused via Reciprocal Rank Fusion ($RRF$, $k=60$). This yields an **86.9% R@5 recall rate (+8.5% gain)** at sub-10ms latency.
+
+### 4. Temporal Dialogue Windows + Semantic Vector Search
+- **Trade-off identified**: Standard RAG solely retrieves top-$k$ semantic chunks based on query similarity. If a student asks *"Why is this negative?"*, pure vector similarity fails because the query contains no domain keywords.
+- **Solution**: Doubtless injects the temporal transcript window around the video playhead (`t - 90s` to `t + 15s`) directly into the agent's context alongside vector search results, resolving demonstratives and conversational context accurately.
+
+### 5. SQLite in WAL Mode vs. External Postgres
 - **Trade-off identified**: Running external database servers adds deployment friction and resource overhead for self-contained video processing appliances.
 - **Solution**: SQLite configured in WAL (Write-Ahead Logging) mode with `PRAGMA foreign_keys = ON` and `PRAGMA synchronous = NORMAL`. Enables concurrent readers alongside writer operations with zero operational latency and simplified backup/restore.
 
-### 4. Monotonic Redis Progress Mapping
+### 6. Monotonic Redis Progress Mapping
 - **Trade-off identified**: Multi-stage media pipelines often suffer from erratic or jumping progress bars when sub-tasks report local percentages.
 - **Solution**: `STAGE_PROGRESS_RANGES` maps local stage fractions monotonically into global progress bounds:
   $$\text{transcoding } (0\% \to 25\%) \implies \text{transcribing } (25\% \to 70\%) \implies \text{indexing } (70\% \to 85\%) \implies \text{notes } (85\% \to 100\%)$$
@@ -256,24 +291,24 @@ doubtless/
 │   ├── media/                   # Media ingestion & processing engine
 │   │   ├── pipeline.py          # 4-stage pipeline orchestrator (PipelineRunner)
 │   │   ├── probe.py             # FFprobe container & stream inspection
-│   │   ├── transcoder.py        # HLS VOD segmentation & poster extraction
+│   │   ├── transcoder.py        # HLS VOD, poster extraction, & frame capture
 │   │   └── transcriber.py       # Groq Whisper API client & audio chunking
 │   ├── rag/                     # Retrieval-Augmented Generation
-│   │   ├── agent.py             # Pydantic AI doubt-solver agent & tools
+│   │   ├── agent.py             # Multimodal Pydantic AI doubt-solver agent
 │   │   ├── chat_service.py      # Conversation management & SSE streaming
 │   │   ├── embeddings.py        # SentenceTransformer singleton & batch encoder
 │   │   ├── query_expansion.py   # Bilingual Hindi/English query expansion
-│   │   ├── retrieval.py         # Generic vector search & deduplication
-│   │   ├── books/               # NCERT textbook indexer & vector search
+│   │   ├── retrieval.py         # Reciprocal Rank Fusion & vector search
+│   │   ├── books/               # NCERT hybrid search & dual indexer
 │   │   └── lecture/             # Lecture transcript chunker & search
 │   ├── storage/                 # Persistence layer
 │   │   ├── cascade_delete.py    # Multi-layer resource teardown
 │   │   ├── connection.py        # SQLite connection pool & WAL pragmas
 │   │   ├── file_storage.py      # Filesystem layouts & HLS paths
 │   │   ├── redis_store.py       # Redis progress tracking & cancellation
-│   │   ├── schema.py            # Relational database table DDL
+│   │   ├── schema.py            # Relational database table DDL & FTS5
 │   │   ├── vector_store.py      # ChromaDB collections manager
-│   │   └── repositories/        # Repository pattern for database entities
+│   │   └── repositories/        # Repositories (video, chat, study, ncert)
 │   ├── study/                   # Study artifact generators
 │   │   ├── context.py           # Temporal context extractors
 │   │   └── generator.py         # Pydantic AI chapter, quiz, & notes agents
@@ -293,12 +328,12 @@ doubtless/
 │   ├── Dockerfile               # Production multi-stage frontend build
 │   └── package.json             # React 19, Tailwind CSS v4, Vite 8
 │
-├── tests/                       # Automated test suite (98 backend tests)
+├── tests/                       # Automated test suite (107 backend tests, 53 frontend tests)
 │   ├── api/                     # Router endpoint contract tests
 │   ├── core/                    # Telemetry & formatting tests
-│   ├── media/                   # Transcoding, chunking, & probe tests
-│   ├── rag/                     # RAG agent, retrieval, & expansion tests
-│   ├── storage/                 # Repository & cascade delete tests
+│   ├── media/                   # Transcoding, frame extraction, & probe tests
+│   ├── rag/                     # Multimodal agent, hybrid RRF, & retrieval tests
+│   ├── storage/                 # Repository, FTS5, & cascade delete tests
 │   └── study/                   # Study generator & context tests
 │
 ├── Dockerfile                   # Production backend container
@@ -450,7 +485,7 @@ Doubtless is built with strict adherence to automated testing and clean architec
 ### Backend Verification (Python)
 
 ```bash
-# Run complete test suite (98 passed)
+# Run complete test suite (107 passed)
 uv run pytest
 
 # Run with verbose output

@@ -31,3 +31,6 @@ frontend/.pnpm-store/
 # Logfire local credentials
 .logfire/
 
+# Local agent scratchpad
+.scratch/
+

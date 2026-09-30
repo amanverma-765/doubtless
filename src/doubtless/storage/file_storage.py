@@ -30,6 +30,23 @@ def source_path(video_id: str, ext: str) -> Path:
     return VIDEO_DIR / f"{video_id}.{ext}"
 
 
+def find_video_media_path(video_id: str) -> Path | None:
+    """Locate the source video file or fallback to HLS playlist for a video ID."""
+    if not is_safe_id(video_id):
+        return None
+
+    if VIDEO_DIR.exists():
+        for f in VIDEO_DIR.glob(f"{video_id}.*"):
+            if f.is_file():
+                return f
+
+    hls_m3u8 = hls_dir(video_id) / "index.m3u8"
+    if hls_m3u8.is_file():
+        return hls_m3u8
+
+    return None
+
+
 def hls_dir(video_id: str) -> Path:
     """Return the directory path for the segmented HLS output."""
     return HLS_DIR / video_id

@@ -4,7 +4,11 @@ from pathlib import Path
 from unittest.mock import patch
 
 from doubtless.media.probe import MediaProbe
-from doubtless.media.transcoder import _build_transcode_command, extract_poster
+from doubtless.media.transcoder import (
+    _build_transcode_command,
+    extract_frame_at_timestamp,
+    extract_poster,
+)
 
 
 def test_build_transcode_command_copy_fastpath() -> None:
@@ -55,3 +59,26 @@ def test_extract_poster(tmp_path: Path) -> None:
             offset_seconds=5.0,
         )
         assert out_file.exists()
+
+
+def test_extract_frame_at_timestamp(tmp_path: Path) -> None:
+    """Frame extraction calls ffmpeg and returns stdout bytes."""
+    dummy_src = tmp_path / "video.mp4"
+    dummy_src.write_bytes(b"dummy_video")
+
+    with patch("subprocess.run") as mock_run:
+        mock_proc = mock_run.return_value
+        mock_proc.returncode = 0
+        mock_proc.stdout = b"\xff\xd8\xff\xe0jpegdata"
+        frame = extract_frame_at_timestamp(dummy_src, timestamp_seconds=12.5)
+        assert frame == b"\xff\xd8\xff\xe0jpegdata"
+        cmd = mock_run.call_args[0][0]
+        assert "-ss" in cmd
+        assert "12.5" in cmd
+        assert "scale='min(960,iw)':-2" in cmd
+        assert "pipe:1" in cmd
+
+
+def test_extract_frame_at_timestamp_missing_file() -> None:
+    """Returns None when source file does not exist."""
+    assert extract_frame_at_timestamp(Path("/missing/video.mp4")) is None

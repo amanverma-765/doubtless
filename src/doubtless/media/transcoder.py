@@ -1,5 +1,6 @@
 """FFmpeg transcoding: command construction, poster extraction, and execution."""
 
+import logging
 import os
 import signal
 import subprocess
@@ -9,6 +10,8 @@ from collections.abc import Callable
 from pathlib import Path
 
 from doubtless.media.probe import MediaError, MediaProbe, probe_video
+
+_logger = logging.getLogger(__name__)
 
 
 def _build_transcode_command(
@@ -109,6 +112,50 @@ def extract_poster(
         )
         if out_file.is_file():
             break
+
+
+def extract_frame_at_timestamp(
+    src: Path,
+    timestamp_seconds: float = 0.0,
+    max_width: int = 960,
+) -> bytes | None:
+    """Extract a single JPEG frame at a given timestamp using FFmpeg piped to memory."""
+    if not src.is_file():
+        return None
+
+    ss = str(max(0.0, timestamp_seconds))
+    scale_vf = f"scale='min({max_width},iw)':-2"
+    cmd = [
+        "ffmpeg",
+        "-y",
+        "-ss",
+        ss,
+        "-i",
+        str(src),
+        "-frames:v",
+        "1",
+        "-vf",
+        scale_vf,
+        "-q:v",
+        "3",
+        "-f",
+        "image2pipe",
+        "-vcodec",
+        "mjpeg",
+        "pipe:1",
+    ]
+    try:
+        proc = subprocess.run(
+            cmd,
+            capture_output=True,
+            check=False,
+            timeout=10,
+        )
+        if proc.returncode == 0 and proc.stdout:
+            return proc.stdout
+    except (subprocess.TimeoutExpired, OSError) as exc:
+        _logger.warning("Failed to extract frame at %s from %s: %s", ss, src, exc)
+    return None
 
 
 def transcode_with_progress(

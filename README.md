@@ -20,7 +20,12 @@
 <br />
 
 <p align="center">
-  <img src="docs/assets/doubt-solver.png" alt="Doubtless Studio - Playhead-Synchronized AI Doubt Solver" width="100%" />
+  <video src="docs/assets/doubtless-demo.mp4" controls="controls" width="100%" poster="docs/assets/doubt-solver.png">
+    <a href="docs/assets/doubtless-demo.mp4">🎬 Watch the Doubtless Platform Demo Video (20s)</a>
+  </video>
+</p>
+<p align="center">
+  <em>A 20-second tour of Doubtless: automated 4-stage ingestion, multimodal playhead grounding, hybrid NCERT textbook RAG, and the automated AI Study Studio.</em>
 </p>
 
 ---
@@ -163,6 +168,8 @@ Manage lectures through the central video library dashboard, supporting single-c
 ![Video Library Dashboard](docs/assets/video-library.png)
 
 ### 3. Monotonic 4-Stage Ingestion Pipeline
+
+![Monotonic 4-Stage Ingestion Pipeline](docs/assets/ingestion-progress.png)
 
 Coordinated by `PipelineRunner` (`src/doubtless/media/pipeline.py`) across four progressive stages:
 1. **Transcoding (0% – 25%)**: FFprobe container validation, poster frame extraction, and multi-segment HLS VOD packaging (`libx264 -preset veryfast`, 6-second independent GOP segments).

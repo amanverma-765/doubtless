@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   fetchVideoChapters,
   fetchVideoFlashcards,
@@ -12,6 +12,8 @@ interface UseStudyArtifactResult<T> {
   setData: React.Dispatch<React.SetStateAction<T>>;
 }
 
+const EMPTY_LIST: never[] = [];
+
 function useStudyArtifact<T>(
   videoId: string | null,
   statusState: string | undefined,
@@ -20,6 +22,7 @@ function useStudyArtifact<T>(
 ): UseStudyArtifactResult<T> {
   const [data, setData] = useState<T>(initialValue);
   const [loading, setLoading] = useState<boolean>(() => Boolean(videoId));
+  const fallbackRef = useRef(initialValue);
 
   const [prevKey, setPrevKey] = useState(
     () => `${videoId ?? ""}:${statusState ?? ""}`
@@ -43,14 +46,14 @@ function useStudyArtifact<T>(
       })
       .catch(() => {
         if (!active) return;
-        setData(initialValue);
+        setData(fallbackRef.current);
         setLoading(false);
       });
 
     return () => {
       active = false;
     };
-  }, [videoId, statusState, fetcher, initialValue]);
+  }, [videoId, statusState, fetcher]);
 
   return { data, loading, setData };
 }
@@ -63,7 +66,7 @@ export function useVideoChapters(
     videoId,
     statusState,
     fetchVideoChapters,
-    []
+    EMPTY_LIST
   );
   return { chapters, loading };
 }
@@ -89,7 +92,7 @@ export function useVideoQuiz(
     videoId,
     statusState,
     fetchVideoQuiz,
-    []
+    EMPTY_LIST
   );
   return { questions, loading };
 }
@@ -106,7 +109,7 @@ export function useVideoFlashcards(
     videoId,
     statusState,
     fetchVideoFlashcards,
-    []
+    EMPTY_LIST
   );
   return { cards, loading, setCards };
 }
